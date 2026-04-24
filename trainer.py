@@ -141,21 +141,35 @@ def train_model(batch_size=4, n_optuna_trials=10, n_splits=5):
         X_test = np.concatenate([cnn_test, cb_feats[test_idx], heuristics[test_idx].reshape(-1, 1)], axis=1)
         y_test = all_labels[test_idx]
         
-        # Apply SMOTE to training fold exclusively
+        # Apply SMOTE to the full training fold later, BUT for Optuna, split FIRST to avoid internal leakage
         print(f"[*] Raw Train Shape: {X_train.shape} | Benign: {np.sum(y_train==0)}, Phishing: {np.sum(y_train==1)}")
         smote = SMOTE(random_state=42)
-        X_train_smote, y_train_smote = smote.fit_resample(X_train, y_train)
-        print(f"[*] SMOTE Applied   : {X_train_smote.shape} | Benign: {np.sum(y_train_smote==0)}, Phishing: {np.sum(y_train_smote==1)}")
         
-        # Optuna Optimization
-        X_opt_train, X_opt_val, y_opt_train, y_opt_val = train_test_split(
-            X_train_smote, y_train_smote, test_size=0.2, random_state=42, stratify=y_train_smote
+        # Optuna Optimization Split
+        X_opt_train_raw, X_opt_val, y_opt_train_raw, y_opt_val = train_test_split(
+            X_train, y_train, test_size=0.2, random_state=42, stratify=y_train
         )
-        study = optuna.create_study(direction="maximize")
-        study.optimize(lambda trial: objective(trial, X_opt_train, y_opt_train, X_opt_val, y_opt_val), n_trials=n_optuna_trials)
         
-        # Final Train and Test for this fold
-        meta = MetaClassifier(use_logistic_regression=True, xgb_params=study.best_trial.params)
+        # Apply SMOTE strictly to Optuna's internal training set
+        X_opt_train_smote, y_opt_train_smote = smote.fit_resample(X_opt_train_raw, y_opt_train_raw)
+        
+        study = optuna.create_study(direction="maximize")
+        study.optimize(lambda trial: objective(trial, X_opt_train_smote, y_opt_train_smote, X_opt_val, y_opt_val), n_trials=n_optuna_trials)
+        
+        # Final Train and Test for this fold using the Best Params
+        best = study.best_trial.params
+        best_xgb_params = {
+            'max_depth': best['xgb_max_depth'],
+            'learning_rate': best['xgb_lr'],
+            'n_estimators': best['xgb_n_estimators'],
+            'subsample': best['xgb_subsample']
+        }
+        
+        # Now apply SMOTE to the entire Train Fold for the final fold evaluation
+        X_train_smote, y_train_smote = smote.fit_resample(X_train, y_train)
+        print(f"[*] Final SMOTE Applied: {X_train_smote.shape} | Benign: {np.sum(y_train_smote==0)}, Phishing: {np.sum(y_train_smote==1)}")
+        
+        meta = MetaClassifier(use_logistic_regression=True, xgb_params=best_xgb_params)
         meta.train(X_train_smote, y_train_smote)
         
         # Only save weights of the final fold (or could omit)
