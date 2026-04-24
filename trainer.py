@@ -14,6 +14,7 @@ import numpy as np
 import optuna
 from sklearn.model_selection import StratifiedKFold, train_test_split
 from imblearn.over_sampling import SMOTE
+import time
 
 def set_seed(seed=42):
     random.seed(seed)
@@ -184,4 +185,12 @@ def train_model(batch_size=4, n_optuna_trials=10, n_splits=5):
     print(f"Average F1-Score:  {np.mean(f1s)*100:.2f}% ± {np.std(f1s)*100:.2f}%")
 
 if __name__ == "__main__":
+    start_time = time.time()
     train_model(batch_size=4, n_optuna_trials=10, n_splits=5)
+    end_time = time.time()
+    
+    total_time = end_time - start_time
+    mins, secs = divmod(total_time, 60)
+    print("\n" + "="*50)
+    print(f"⏱️ TOTAL PIPELINE EXECUTION TIME: {int(mins)} minutes and {int(secs)} seconds")
+    print("="*50)
