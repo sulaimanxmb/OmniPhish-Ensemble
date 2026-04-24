@@ -61,6 +61,12 @@ def train_codebert_lora(train_loader, device, epochs=3):
             loss.backward()
             optimizer.step()
             
+            # Clear backend cache aggressively to prevent MPS OOM
+            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                torch.mps.empty_cache()
+            elif torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
             epoch_loss += loss.item() * len(batch_dicts)
             progress_bar.set_postfix(loss=f"{loss.item():.4f}")
             

@@ -39,17 +39,19 @@ class CodeBERTEmbedding(nn.Module):
         for param in self.codebert.parameters():
             param.requires_grad = False
             
-    def compute_embedding(self, text):
+    def compute_embedding(self, text, max_chunks=None):
         """
         Tokenizes text without truncation, applies 512-token chunks with 50-token overlap.
         Passes each chunk through CodeBERT independently and applies Global Max Pooling.
         Returns a single 768-D vector representing the most salient features.
         """
+        # Suppress the max length warning by temporarily changing logging level, 
+        # or we just let it warn once. It's harmless since we chunk manually.
         inputs = self.tokenizer(
             text, 
             return_tensors="pt", 
-            truncation=False, # We want ALL tokens
-            add_special_tokens=False # We handle special tokens per chunk
+            truncation=False, 
+            add_special_tokens=False 
         )
         
         input_ids = inputs["input_ids"][0]
@@ -71,7 +73,16 @@ class CodeBERTEmbedding(nn.Module):
                 outputs = self.codebert(input_ids=c_ids, attention_mask=c_mask)
                 return outputs.last_hidden_state[:, 0, :].squeeze(0)
         
+        # Determine chunk limit to prevent OOM (Out of Memory)
+        # If training (gradients enabled), limit chunks strictly.
+        if max_chunks is None:
+            max_chunks = 4 if self.codebert.training else 12
+            
+        chunk_count = 0
         for i in range(0, len(input_ids), stride):
+            if chunk_count >= max_chunks:
+                break
+                
             chunk_ids = input_ids[i:i + chunk_size]
             chunk_mask = attention_mask[i:i + chunk_size]
             
@@ -101,6 +112,7 @@ class CodeBERTEmbedding(nn.Module):
                 cls_emb = outputs.last_hidden_state[:, 0, :]
                 embeddings.append(cls_emb)
                 
+            chunk_count += 1
             if i + chunk_size >= len(input_ids):
                 break
                 
