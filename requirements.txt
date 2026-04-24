@@ -1,0 +1,8 @@
+playwright
+torch
+transformers
+beautifulsoup4
+networkx
+scikit-learn
+pandas
+xgboost

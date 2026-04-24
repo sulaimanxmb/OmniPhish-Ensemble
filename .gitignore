@@ -1,0 +1,29 @@
+# Virtual Environments
+.venv/
+env/
+venv/
+ENV/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Mac OS
+.DS_Store
+
+# IDEs
+.vscode/
+.idea/
+
+# Machine Learning & Datasets
+Dataset/
+weights/
+*.pkl
+*.pt
+*.pth
+*.h5
+*.onnx
+
+# Logs
+*.log
