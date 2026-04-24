@@ -1,7 +1,13 @@
+import os
 import torch
 import torch.nn as nn
 from transformers import RobertaTokenizer, RobertaModel
+import transformers
 from peft import LoraConfig, get_peft_model
+
+# We manually chunk sequences, so suppress the sequence length warnings
+transformers.logging.set_verbosity_error()
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 class CodeBERTEmbedding(nn.Module):
     def __init__(self, model_name="microsoft/codebert-base", use_lora=True):

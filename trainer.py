@@ -48,17 +48,22 @@ def train_codebert_lora(train_loader, device, epochs=3):
             labels = labels.to(device).unsqueeze(1).float()
             optimizer.zero_grad()
             
-            batch_logits = []
-            for item in batch_dicts:
+            batch_loss = 0.0
+            
+            # Gradient Accumulation: Forward/Backward per item to save massive amounts of VRAM
+            for i, item in enumerate(batch_dicts):
                 cb_text = item['codebert_text']
                 emb = codebert.compute_embedding(cb_text).unsqueeze(0).to(device)
-                batch_logits.append(emb)
                 
-            batch_tensor = torch.cat(batch_logits, dim=0)
-            logits = temp_classifier(batch_tensor)
-            
-            loss = criterion(logits, labels)
-            loss.backward()
+                logit = temp_classifier(emb)
+                single_label = labels[i:i+1]
+                
+                loss = criterion(logit, single_label)
+                loss = loss / len(batch_dicts) # Scale loss since we are accumulating
+                loss.backward() # This frees the activation graph immediately!
+                
+                batch_loss += loss.item() * len(batch_dicts)
+                
             optimizer.step()
             
             # Clear backend cache aggressively to prevent MPS OOM
@@ -67,8 +72,8 @@ def train_codebert_lora(train_loader, device, epochs=3):
             elif torch.cuda.is_available():
                 torch.cuda.empty_cache()
             
-            epoch_loss += loss.item() * len(batch_dicts)
-            progress_bar.set_postfix(loss=f"{loss.item():.4f}")
+            epoch_loss += batch_loss
+            progress_bar.set_postfix(loss=f"{batch_loss / len(batch_dicts):.4f}")
             
     print("[+] LoRA Fine-tuning complete. Saving adapter weights...")
     os.makedirs("weights/lora_adapter", exist_ok=True)
