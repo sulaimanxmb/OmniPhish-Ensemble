@@ -35,8 +35,11 @@ The outputs of the three modalities are flattened and concatenated into an **898
 - **Optuna Hyperparameter Optimization:** To ensure maximum statistical performance without manual tuning bias, the architecture employs the **Optuna** optimization framework. The deep learning models (CNN and CodeBERT) act as fixed, deterministic feature extractors to prevent overfitting on the limited dataset size. Optuna is then deployed exclusively on the extracted hybrid vector space to mathematically optimize the XGBoost ensemble parameters (`max_depth`, `subsample`, `learning_rate`, `n_estimators`) via rapid multi-trial validation.
 - **Hardware Optimization Note:** Additionally, `tree_method='hist'` and thread limitations are employed to ensure stable execution on modern ARM architectures (e.g., Apple Silicon M-Series), preventing OpenMP segmentation faults.
 
-### 3.4. Experimental Reproducibility & Deterministic Training
-To guarantee exact statistical reproducibility for IEEE reporting, all stochastic components across the pipeline are strictly locked. A global random seed (`42`) is enforced across Python's native `random` module, NumPy, and PyTorch (including CPU, CUDA, and Apple MPS backends). Furthermore, non-deterministic PyTorch algorithms (such as cuDNN benchmark heuristics) are disabled. This ensures that the random data split, CNN weight initialization, and batch shuffling remain 100% deterministic, allowing independent verification of precision, recall, and F1-score metrics.
+### 3.4. Rigorous Statistical Evaluation (K-Fold CV & SMOTE)
+To guarantee the statistical validity of our results and prevent evaluation bias from a single arbitrary train-test split, the architecture utilizes **Stratified 5-Fold Cross Validation**. 
+
+Furthermore, to address the inherent 1:2 class imbalance between benign and phishing samples in the dataset without introducing data leakage, we employ the **Synthetic Minority Over-sampling Technique (SMOTE)** natively in the high-dimensional hybrid feature space (898-D). 
+Crucially, SMOTE is applied *exclusively* to the isolated training subset of each active fold. This synthesizes mathematically realistic benign vectors to achieve a perfect 1:1 training ratio for the XGBoost Meta-Classifier, while the test fold remains completely unseen and synthetically unaltered, ensuring zero data leakage.
 
 ## 4. Model Training & Live Inference Workflow
 1. **Baseline Comparison:** The architecture is evaluated against a control group—a Random Forest classifier relying purely on 8 manual HTML heuristics.
