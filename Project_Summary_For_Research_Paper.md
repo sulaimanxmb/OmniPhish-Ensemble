@@ -20,10 +20,8 @@ The core innovation is the fusion of three distinct analytical engines into a si
 #### Modality 1: Structural Sequence Analysis (CNN1D)
 Phishing kits often use automated templates that share a hidden mathematical structure, regardless of the visual CSS. The raw HTML is parsed into a sequence of structural tags, which is fed into a 1-Dimensional Convolutional Neural Network (CNN). The CNN identifies anomalous nested hierarchies and structural irregularities, outputting a **128-dimensional structural vector**.
 
-#### Modality 2: Semantic Intent Analysis (CodeBERT via PEFT LoRA & Overlapping Chunking)
+#### Modality 2: Semantic Intent Analysis (CodeBERT via Overlapping Chunking)
 To understand the *intent* of the malicious JavaScript and form submissions, a pre-trained CodeBERT transformer model is employed. Because standard transformers impose a strict 512-token limit, attackers often attempt to bypass detection by appending massive blocks of whitespace or dead code to push malicious payloads out of the sequence length. To counter this, we engineered an **Overlapping Chunking Mechanism**. The CodeBERT engine chunks the entire distilled HTML sequence into 512-token windows with a 50-token overlap, ensuring payloads split across boundaries are not missed. Each chunk is processed independently, and a **Global Max Pooling** operation is applied across all chunk embeddings (`torch.max(dim=0)`) to extract the most malicious signal present anywhere in the document, compressing it back into a single **768-dimensional semantic vector**. 
-
-Furthermore, to adapt CodeBERT specifically to zero-day phishing semantics without suffering from catastrophic forgetting, we fine-tune the attention layers utilizing **Parameter-Efficient Fine-Tuning (PEFT)** with **Low-Rank Adaptation (LoRA)** before freezing the model for feature extraction. To prevent Out-Of-Memory (OOM) failures on extremely long obfuscated sequences (e.g., 14,000+ tokens) while maintaining gradient tracking, the chunking mechanism actively caps maximum structural chunks evaluated during backpropagation, alongside aggressive runtime backend caching clearance.
 
 #### Modality 3: Lexical URL & Routing Heuristics
 To eliminate Domain Blindness, the system evaluates the target endpoint's location and routing behavior:

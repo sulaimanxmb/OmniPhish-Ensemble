@@ -29,59 +29,8 @@ def set_seed(seed=42):
 
 set_seed(42)
 
-def train_codebert_lora(train_loader, device, epochs=3):
-    print("\n" + "="*50)
-    print("🚀 PHASE 1.5: Fine-Tuning CodeBERT with PEFT (LoRA)")
-    print("="*50)
-    
-    codebert = CodeBERTEmbedding(use_lora=True).to(device)
-    codebert.train_lora_mode()
-    
-    temp_classifier = nn.Linear(768, 1).to(device)
-    optimizer = optim.AdamW(list(codebert.parameters()) + list(temp_classifier.parameters()), lr=2e-4)
-    criterion = nn.BCEWithLogitsLoss()
-    
-    for epoch in range(epochs):
-        epoch_loss = 0.0
-        progress_bar = tqdm(train_loader, desc=f"LoRA Epoch {epoch+1}/{epochs}", unit="batch")
-        for batch_dicts, labels in progress_bar:
-            labels = labels.to(device).unsqueeze(1).float()
-            optimizer.zero_grad()
-            
-            batch_loss = 0.0
-            
-            # Gradient Accumulation: Forward/Backward per item to save massive amounts of VRAM
-            for i, item in enumerate(batch_dicts):
-                cb_text = item['codebert_text']
-                emb = codebert.compute_embedding(cb_text).unsqueeze(0).to(device)
-                
-                logit = temp_classifier(emb)
-                single_label = labels[i:i+1]
-                
-                loss = criterion(logit, single_label)
-                loss = loss / len(batch_dicts) # Scale loss since we are accumulating
-                loss.backward() # This frees the activation graph immediately!
-                
-                batch_loss += loss.item() * len(batch_dicts)
-                
-            optimizer.step()
-            
-            # Clear backend cache aggressively to prevent MPS OOM
-            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-                torch.mps.empty_cache()
-            elif torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            
-            epoch_loss += batch_loss
-            progress_bar.set_postfix(loss=f"{batch_loss / len(batch_dicts):.4f}")
-            
-    print("[+] LoRA Fine-tuning complete. Saving adapter weights...")
-    os.makedirs("weights/lora_adapter", exist_ok=True)
-    codebert.codebert.save_pretrained("weights/lora_adapter")
-    return codebert
-
 def pre_extract_codebert_features(dataloader, codebert, device):
-    codebert.eval_lora_and_freeze()
+    codebert.eval()
     cb_features, heuristics, labels_list = [], [], []
     
     with torch.no_grad():
@@ -186,16 +135,7 @@ def train_model(batch_size=4, n_optuna_trials=10):
     extract_val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate)
     
-    # --- PHASE 1.5: LoRA ---
-    # In a real run, you only need to run this once.
-    if not os.path.exists("weights/lora_adapter"):
-        codebert = train_codebert_lora(train_loader, device, epochs=2)
-    else:
-        print("[+] Loading existing LoRA adapter...")
-        codebert = CodeBERTEmbedding(use_lora=True).to(device)
-        from peft import PeftModel
-        codebert.codebert = PeftModel.from_pretrained(codebert.codebert.get_base_model(), "weights/lora_adapter")
-        codebert.to(device)
+    codebert = CodeBERTEmbedding().to(device)
 
     # Pre-extract CodeBERT embeddings since they are frozen during Optuna trials
     print("\n" + "="*50)

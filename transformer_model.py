@@ -3,47 +3,22 @@ import torch
 import torch.nn as nn
 from transformers import RobertaTokenizer, RobertaModel
 import transformers
-from peft import LoraConfig, get_peft_model
 
 # We manually chunk sequences, so suppress the sequence length warnings
 transformers.logging.set_verbosity_error()
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 class CodeBERTEmbedding(nn.Module):
-    def __init__(self, model_name="microsoft/codebert-base", use_lora=True):
+    def __init__(self, model_name="microsoft/codebert-base"):
         super(CodeBERTEmbedding, self).__init__()
         self.tokenizer = RobertaTokenizer.from_pretrained(model_name)
-        base_model = RobertaModel.from_pretrained(model_name)
+        self.codebert = RobertaModel.from_pretrained(model_name)
         
-        self.use_lora = use_lora
-        if use_lora:
-            # Configure LoRA to adapt the query and value attention matrices
-            config = LoraConfig(
-                r=8,
-                lora_alpha=32,
-                target_modules=["query", "value"],
-                lora_dropout=0.05,
-                bias="none",
-                modules_to_save=["pooler"] # Save pooler if used, but we use CLS token directly
-            )
-            self.codebert = get_peft_model(base_model, config)
-            # PEFT automatically sets requires_grad=True only for LoRA parameters
-            self.codebert.print_trainable_parameters()
-        else:
-            self.codebert = base_model
-            for param in self.codebert.parameters():
-                param.requires_grad = False
-                
-    def train_lora_mode(self):
-        """Sets the model to training mode for Phase 1.5."""
-        if self.use_lora:
-            self.codebert.train()
-            
-    def eval_lora_and_freeze(self):
-        """Sets to eval mode and freezes everything for Phase 2 extraction."""
-        self.codebert.eval()
+        # Freeze CodeBERT to save memory, as it acts as a static feature extractor
         for param in self.codebert.parameters():
             param.requires_grad = False
+                
+
             
     def compute_embedding(self, text, max_chunks=None):
         """
