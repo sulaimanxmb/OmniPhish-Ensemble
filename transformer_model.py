@@ -1,56 +1,124 @@
 import torch
 import torch.nn as nn
 from transformers import RobertaTokenizer, RobertaModel
+from peft import LoraConfig, get_peft_model
 
 class CodeBERTEmbedding(nn.Module):
-    def __init__(self, model_name="microsoft/codebert-base"):
+    def __init__(self, model_name="microsoft/codebert-base", use_lora=True):
         super(CodeBERTEmbedding, self).__init__()
-        # Load the base model without the classification head
         self.tokenizer = RobertaTokenizer.from_pretrained(model_name)
-        self.codebert = RobertaModel.from_pretrained(model_name)
+        base_model = RobertaModel.from_pretrained(model_name)
         
-        # We freeze CodeBERT to save memory, as we only use it for feature extraction
+        self.use_lora = use_lora
+        if use_lora:
+            # Configure LoRA to adapt the query and value attention matrices
+            config = LoraConfig(
+                r=8,
+                lora_alpha=32,
+                target_modules=["query", "value"],
+                lora_dropout=0.05,
+                bias="none",
+                modules_to_save=["pooler"] # Save pooler if used, but we use CLS token directly
+            )
+            self.codebert = get_peft_model(base_model, config)
+            # PEFT automatically sets requires_grad=True only for LoRA parameters
+            self.codebert.print_trainable_parameters()
+        else:
+            self.codebert = base_model
+            for param in self.codebert.parameters():
+                param.requires_grad = False
+                
+    def train_lora_mode(self):
+        """Sets the model to training mode for Phase 1.5."""
+        if self.use_lora:
+            self.codebert.train()
+            
+    def eval_lora_and_freeze(self):
+        """Sets to eval mode and freezes everything for Phase 2 extraction."""
+        self.codebert.eval()
         for param in self.codebert.parameters():
             param.requires_grad = False
             
     def compute_embedding(self, text):
         """
-        Takes raw string (extracted tags), tokenizes with max 512 tokens,
-        and returns the [CLS] embedding of size 768.
+        Tokenizes text without truncation, applies 512-token chunks with 50-token overlap.
+        Passes each chunk through CodeBERT independently and applies Global Max Pooling.
+        Returns a single 768-D vector representing the most salient features.
         """
-        # Strict truncation and padding
         inputs = self.tokenizer(
             text, 
             return_tensors="pt", 
-            max_length=512, 
-            padding="max_length", 
-            truncation=True
+            truncation=False, # We want ALL tokens
+            add_special_tokens=False # We handle special tokens per chunk
         )
         
-        # Move tensors to the same device as the model
+        input_ids = inputs["input_ids"][0]
+        attention_mask = inputs["attention_mask"][0]
+        
+        chunk_size = 510 # Leave room for 2 special tokens: [CLS] and [SEP]
+        overlap = 50
+        stride = chunk_size - overlap
+        
         device = next(self.codebert.parameters()).device
-        input_ids = inputs["input_ids"].to(device)
-        attention_mask = inputs["attention_mask"].to(device)
+        embeddings = []
         
-        # Output [CLS] embedding
-        with torch.no_grad():
-            outputs = self.codebert(input_ids=input_ids, attention_mask=attention_mask)
-            # The pooler_output or simply taking the first token representation
-            # outputs.last_hidden_state shape: (batch_size, sequence_length, hidden_size)
-            # [CLS] token is the first token
-            cls_embedding = outputs.last_hidden_state[:, 0, :]
+        # If text is empty
+        if len(input_ids) == 0:
+            empty_input = self.tokenizer("", return_tensors="pt", padding="max_length", max_length=512)
+            c_ids = empty_input["input_ids"].to(device)
+            c_mask = empty_input["attention_mask"].to(device)
+            with torch.set_grad_enabled(self.codebert.training):
+                outputs = self.codebert(input_ids=c_ids, attention_mask=c_mask)
+                return outputs.last_hidden_state[:, 0, :].squeeze(0)
+        
+        for i in range(0, len(input_ids), stride):
+            chunk_ids = input_ids[i:i + chunk_size]
+            chunk_mask = attention_mask[i:i + chunk_size]
             
-        return cls_embedding
+            # Add [CLS] and [SEP]
+            cls_token = torch.tensor([self.tokenizer.cls_token_id])
+            sep_token = torch.tensor([self.tokenizer.sep_token_id])
+            mask_ones = torch.tensor([1])
+            
+            chunk_ids = torch.cat([cls_token, chunk_ids, sep_token])
+            chunk_mask = torch.cat([mask_ones, chunk_mask, mask_ones])
+            
+            # Pad to 512
+            if len(chunk_ids) < 512:
+                pad_len = 512 - len(chunk_ids)
+                pad_ids = torch.full((pad_len,), self.tokenizer.pad_token_id, dtype=torch.long)
+                pad_mask = torch.zeros((pad_len,), dtype=torch.long)
+                
+                chunk_ids = torch.cat([chunk_ids, pad_ids])
+                chunk_mask = torch.cat([chunk_mask, pad_mask])
+                
+            c_ids = chunk_ids.unsqueeze(0).to(device)
+            c_mask = chunk_mask.unsqueeze(0).to(device)
+            
+            # Maintain gradients if training LoRA
+            with torch.set_grad_enabled(self.codebert.training):
+                outputs = self.codebert(input_ids=c_ids, attention_mask=c_mask)
+                cls_emb = outputs.last_hidden_state[:, 0, :]
+                embeddings.append(cls_emb)
+                
+            if i + chunk_size >= len(input_ids):
+                break
+                
+        all_embs = torch.cat(embeddings, dim=0) # (num_chunks, 768)
+        max_pooled_emb, _ = torch.max(all_embs, dim=0) # (768,)
         
+        return max_pooled_emb
+
 if __name__ == "__main__":
-    model = CodeBERTEmbedding()
+    model = CodeBERTEmbedding(use_lora=True)
     
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     model = model.to(device)
     
-    sample_code = "<script>function login() { alert('test'); }</script>"
+    # Simulate a very long document
+    sample_code = "<script>function login() { alert('test'); }</script>" * 200
     embedding = model.compute_embedding(sample_code)
     
     print(f"Device: {device}")
     print(f"Input text length (chars): {len(sample_code)}")
-    print(f"Output CodeBERT embedding shape: {embedding.shape}")
+    print(f"Output Max-Pooled CodeBERT embedding shape: {embedding.shape}")

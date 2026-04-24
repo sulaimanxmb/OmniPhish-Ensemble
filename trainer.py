@@ -11,6 +11,7 @@ import random
 from tqdm import tqdm
 from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, accuracy_score
 import numpy as np
+import optuna
 
 def set_seed(seed=42):
     """Locks all random seeds for exact reproducibility."""
@@ -20,7 +21,6 @@ def set_seed(seed=42):
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
-    # Also for Apple MPS if available
     if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
         torch.mps.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
@@ -29,121 +29,32 @@ def set_seed(seed=42):
 
 set_seed(42)
 
-def extract_features(cnn, codebert, dataloader, device):
-    """
-    Passes the dataset through the trained CNN and frozen CodeBERT
-    to extract the final 1D feature vectors for XGBoost.
-    """
-    cnn.eval()
-    all_features = []
-    all_labels = []
-    
-    print(f"\n[+] Extracting Phase 2 Features (CNN + CodeBERT)...")
-    with torch.no_grad():
-        progress_bar = tqdm(dataloader, desc="Extracting Features", unit="batch")
-        for batch_dicts, labels in progress_bar:
-            for item, label in zip(batch_dicts, labels):
-                cnn_input = item['cnn_input'].unsqueeze(0).to(device)
-                cb_text = item['codebert_text']
-                
-                # Extract CNN features
-                cnn_emb = cnn(cnn_input)
-                
-                # Extract CodeBERT features
-                cb_emb = codebert.compute_embedding(cb_text)
-                
-                # Extract Heuristic feature
-                heuristic_val = item['heuristic'].cpu().numpy()
-                
-                # Concatenate locally to save RAM later
-                cnn_flat = cnn_emb.cpu().numpy().flatten()
-                cb_flat = cb_emb.cpu().numpy().flatten()
-                
-                # Using the classifier's expected vector composition manually here
-                combined = np.concatenate([cnn_flat, cb_flat, heuristic_val])
-                all_features.append(combined)
-                all_labels.append(label.item())
-                
-    return np.array(all_features), np.array(all_labels)
-
-def train_model(epochs=5, batch_size=4):
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-    print(f"Training on device: {device}")
-    
-    # ---------------------------------------------------------
-    # DATASET INITIALIZATION
-    # ---------------------------------------------------------
-    dirs = {
-        'phishing': 'dataset/raw_html/phishing',
-        'benign': 'dataset/raw_html/benign'
-    }
-    
-    phish_count = len([f for f in os.listdir(dirs['phishing']) if f.endswith('.html')]) if os.path.exists(dirs['phishing']) else 0
-    benign_count = len([f for f in os.listdir(dirs['benign']) if f.endswith('.html')]) if os.path.exists(dirs['benign']) else 0
-    
-    undersample_benign_flag = False
-    if phish_count != benign_count and min(phish_count, benign_count) > 0:
-        if phish_count < benign_count:
-            print("\n[!] Minority class is Phishing. Triggering PyTorch Undersampling on Benign domains to prevent XGBoost bias...")
-            undersample_benign_flag = True
-            
-    dataset = PhishingDataset(dirs, undersample_benign=undersample_benign_flag)
-    dataset_len = len(dataset)
-    if dataset_len == 0:
-        print("Dataset is empty. Ensure phish_scraper.py has run successfully and generated HTMLs.")
-        return
-        
-    # --- 70/15/15 DATASPLIT IMPLEMENTATION ---
-    train_size = int(0.7 * dataset_len)
-    val_size = int(0.15 * dataset_len)
-    test_size = dataset_len - train_size - val_size
-    
-    train_dataset, val_dataset, test_dataset = random_split(
-        dataset, [train_size, val_size, test_size],
-        generator=torch.Generator().manual_seed(42) # Reproducibility for academic paper
-    )
-    
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate)
-    
-    print(f"\n[+] Dataset properly split for IEEE evaluation:")
-    print(f"  - Total Files: {dataset_len}")
-    print(f"  - Training Set (70%): {train_size} files")
-    print(f"  - Validation Set (15%): {val_size} files")
-    print(f"  - Test Set (15%): {test_size} files\n")
-    
-    # ---------------------------------------------------------
-    # PHASE 1: TRAIN CNN REPRESENTATION
-    # ---------------------------------------------------------
+def train_codebert_lora(train_loader, device, epochs=3):
+    print("\n" + "="*50)
+    print("🚀 PHASE 1.5: Fine-Tuning CodeBERT with PEFT (LoRA)")
     print("="*50)
-    print("🚀 PHASE 1: Training CNN Structural Extractor")
-    print("="*50)
-    cnn = CNN1DEmbedding().to(device)
-    codebert = CodeBERTEmbedding().to(device)
     
-    # We use a temporary Linear layer just to backprop gradients into the CNN
-    temp_classifier = nn.Linear(128, 1).to(device) 
+    codebert = CodeBERTEmbedding(use_lora=True).to(device)
+    codebert.train_lora_mode()
     
-    optimizer = optim.Adam(list(cnn.parameters()) + list(temp_classifier.parameters()), lr=1e-3)
+    temp_classifier = nn.Linear(768, 1).to(device)
+    optimizer = optim.AdamW(list(codebert.parameters()) + list(temp_classifier.parameters()), lr=2e-4)
     criterion = nn.BCEWithLogitsLoss()
     
     for epoch in range(epochs):
-        cnn.train()
         epoch_loss = 0.0
-        
-        progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs} [CNN Train]", unit="batch")
+        progress_bar = tqdm(train_loader, desc=f"LoRA Epoch {epoch+1}/{epochs}", unit="batch")
         for batch_dicts, labels in progress_bar:
             labels = labels.to(device).unsqueeze(1).float()
             optimizer.zero_grad()
             
             batch_logits = []
             for item in batch_dicts:
-                cnn_input = item['cnn_input'].unsqueeze(0).to(device)
-                cnn_emb = cnn(cnn_input) 
-                batch_logits.append(cnn_emb)
+                cb_text = item['codebert_text']
+                emb = codebert.compute_embedding(cb_text).unsqueeze(0).to(device)
+                batch_logits.append(emb)
                 
-            batch_tensor = torch.cat(batch_logits, dim=0) 
+            batch_tensor = torch.cat(batch_logits, dim=0)
             logits = temp_classifier(batch_tensor)
             
             loss = criterion(logits, labels)
@@ -153,63 +64,220 @@ def train_model(epochs=5, batch_size=4):
             epoch_loss += loss.item() * len(batch_dicts)
             progress_bar.set_postfix(loss=f"{loss.item():.4f}")
             
-    print("[+] CNN Training Complete. Saving Weights...")
+    print("[+] LoRA Fine-tuning complete. Saving adapter weights...")
+    os.makedirs("weights/lora_adapter", exist_ok=True)
+    codebert.codebert.save_pretrained("weights/lora_adapter")
+    return codebert
+
+def pre_extract_codebert_features(dataloader, codebert, device):
+    codebert.eval_lora_and_freeze()
+    cb_features, heuristics, labels_list = [], [], []
+    
+    with torch.no_grad():
+        for batch_dicts, labels in tqdm(dataloader, desc="Extracting Static CodeBERT Features"):
+            for item, label in zip(batch_dicts, labels):
+                cb_text = item['codebert_text']
+                emb = codebert.compute_embedding(cb_text)
+                cb_features.append(emb.cpu().numpy().flatten())
+                heuristics.append(item['heuristic'].cpu().numpy())
+                labels_list.append(label.item())
+                
+    return np.array(cb_features), np.array(heuristics), np.array(labels_list)
+
+def objective(trial, train_loader, extract_train_loader, extract_val_loader, pre_train, pre_val, device):
+    # 1. Suggest CNN Hyperparameters
+    lr = trial.suggest_float("cnn_lr", 1e-4, 5e-3, log=True)
+    num_filters = trial.suggest_categorical("cnn_filters", [64, 128])
+    embedding_dim = trial.suggest_categorical("cnn_emb_dim", [32, 64])
+    
+    cnn = CNN1DEmbedding(embedding_dim=embedding_dim, num_filters=num_filters).to(device)
+    temp_classifier = nn.Linear(128, 1).to(device)
+    optimizer = optim.Adam(list(cnn.parameters()) + list(temp_classifier.parameters()), lr=lr)
+    criterion = nn.BCEWithLogitsLoss()
+    
+    # Train CNN for limited epochs during Optuna trials
+    cnn.train()
+    for epoch in range(2):
+        for batch_dicts, labels in train_loader:
+            labels = labels.to(device).unsqueeze(1).float()
+            optimizer.zero_grad()
+            batch_logits = []
+            for item in batch_dicts:
+                cnn_input = item['cnn_input'].unsqueeze(0).to(device)
+                emb = cnn(cnn_input)
+                batch_logits.append(emb)
+            batch_tensor = torch.cat(batch_logits, dim=0)
+            loss = criterion(temp_classifier(batch_tensor), labels)
+            loss.backward()
+            optimizer.step()
+            
+    # Extract CNN features using non-shuffled loaders to align with precomputed arrays
+    cnn.eval()
+    def get_cnn_features(loader):
+        feats = []
+        with torch.no_grad():
+            for batch_dicts, _ in loader:
+                for item in batch_dicts:
+                    cnn_input = item['cnn_input'].unsqueeze(0).to(device)
+                    emb = cnn(cnn_input)
+                    feats.append(emb.cpu().numpy().flatten())
+        return np.array(feats)
+        
+    cnn_train = get_cnn_features(extract_train_loader)
+    cnn_val = get_cnn_features(extract_val_loader)
+    
+    # Concat features: CNN (128) + CodeBERT (768) + Heuristics (1)
+    X_train = np.concatenate([cnn_train, pre_train[0], pre_train[1].reshape(-1, 1)], axis=1)
+    X_val = np.concatenate([cnn_val, pre_val[0], pre_val[1].reshape(-1, 1)], axis=1)
+    
+    # 2. Suggest XGBoost Hyperparameters
+    xgb_params = {
+        'max_depth': trial.suggest_int('xgb_max_depth', 2, 5),
+        'learning_rate': trial.suggest_float('xgb_lr', 1e-3, 0.3, log=True),
+        'n_estimators': trial.suggest_int('xgb_n_estimators', 50, 150),
+        'subsample': trial.suggest_float('xgb_subsample', 0.6, 1.0)
+    }
+    
+    meta = MetaClassifier(use_logistic_regression=False, xgb_params=xgb_params)
+    meta.train(X_train, pre_train[2])
+    
+    preds = []
+    for x in X_val:
+        preds.append(meta.predict(x))
+        
+    f1 = f1_score(pre_val[2], preds, zero_division=0)
+    return f1
+
+def train_model(batch_size=4, n_optuna_trials=10):
+    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    print(f"Training on device: {device}")
+    
+    dirs = {'phishing': 'dataset/raw_html/phishing', 'benign': 'dataset/raw_html/benign'}
+    dataset = PhishingDataset(dirs, undersample_benign=False)
+    dataset_len = len(dataset)
+    if dataset_len == 0:
+        print("Dataset is empty.")
+        return
+        
+    train_size = int(0.7 * dataset_len)
+    val_size = int(0.15 * dataset_len)
+    test_size = dataset_len - train_size - val_size
+    
+    train_dataset, val_dataset, test_dataset = random_split(
+        dataset, [train_size, val_size, test_size],
+        generator=torch.Generator().manual_seed(42)
+    )
+    
+    # Shuffled loader for CNN training
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate)
+    # Non-shuffled loaders for feature extraction alignment
+    extract_train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate)
+    extract_val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate)
+    
+    # --- PHASE 1.5: LoRA ---
+    # In a real run, you only need to run this once.
+    if not os.path.exists("weights/lora_adapter"):
+        codebert = train_codebert_lora(train_loader, device, epochs=2)
+    else:
+        print("[+] Loading existing LoRA adapter...")
+        codebert = CodeBERTEmbedding(use_lora=True).to(device)
+        from peft import PeftModel
+        codebert.codebert = PeftModel.from_pretrained(codebert.codebert.get_base_model(), "weights/lora_adapter")
+        codebert.to(device)
+
+    # Pre-extract CodeBERT embeddings since they are frozen during Optuna trials
+    print("\n" + "="*50)
+    print("🚀 PRE-EXTRACTING STATIC CODEBERT FEATURES FOR OPTUNA")
+    print("="*50)
+    pre_train = pre_extract_codebert_features(extract_train_loader, codebert, device)
+    pre_val = pre_extract_codebert_features(extract_val_loader, codebert, device)
+    pre_test = pre_extract_codebert_features(test_loader, codebert, device)
+    
+    # --- OPTUNA STUDY ---
+    print("\n" + "="*50)
+    print("🚀 LAUNCHING OPTUNA: CNN + XGBoost Joint Optimization")
+    print("="*50)
+    study = optuna.create_study(direction="maximize")
+    study.optimize(lambda trial: objective(trial, train_loader, extract_train_loader, extract_val_loader, pre_train, pre_val, device), n_trials=n_optuna_trials)
+    
+    print("\n[+] Best Optuna Trial:")
+    print(f"  F1-Score: {study.best_value:.4f}")
+    print("  Params: ")
+    for key, value in study.best_trial.params.items():
+        print(f"    {key}: {value}")
+        
+    print("\n🚀 FINAL TRAINING WITH BEST PARAMS...")
+    best = study.best_trial.params
+    
+    # Retrain CNN fully
+    cnn = CNN1DEmbedding(embedding_dim=best['cnn_emb_dim'], num_filters=best['cnn_filters']).to(device)
+    temp_classifier = nn.Linear(128, 1).to(device)
+    optimizer = optim.Adam(list(cnn.parameters()) + list(temp_classifier.parameters()), lr=best['cnn_lr'])
+    criterion = nn.BCEWithLogitsLoss()
+    
+    cnn.train()
+    for epoch in range(5):
+        for batch_dicts, labels in tqdm(train_loader, desc=f"Final CNN Epoch {epoch+1}/5"):
+            labels = labels.to(device).unsqueeze(1).float()
+            optimizer.zero_grad()
+            batch_logits = []
+            for item in batch_dicts:
+                cnn_input = item['cnn_input'].unsqueeze(0).to(device)
+                batch_logits.append(cnn(cnn_input))
+            loss = criterion(temp_classifier(torch.cat(batch_logits, dim=0)), labels)
+            loss.backward()
+            optimizer.step()
+            
     os.makedirs("weights", exist_ok=True)
     torch.save(cnn.state_dict(), "weights/cnn_trained.pt")
     
-    # ---------------------------------------------------------
-    # PHASE 2: EXTRACT FEATURES FOR XGBOOST
-    # ---------------------------------------------------------
-    print("\n" + "="*50)
-    print("🚀 PHASE 2: Extracting Hybrid Vectors (CNN + CodeBERT)")
-    print("="*50)
-    
-    X_train, y_train = extract_features(cnn, codebert, train_loader, device)
-    X_val, y_val = extract_features(cnn, codebert, val_loader, device)
-    X_test, y_test = extract_features(cnn, codebert, test_loader, device)
-    
-    # ---------------------------------------------------------
-    # PHASE 3: TRAIN XGBOOST + LOGISTIC REGRESSION
-    # ---------------------------------------------------------
-    print("\n" + "="*50)
-    print("🚀 PHASE 3: Training XGBoost Stacking Ensemble")
-    print("="*50)
-    
-    meta_model = MetaClassifier(use_logistic_regression=True)
-    
-    # We combine train + val for XGBoost training because XGBoost handles its own validation
-    # or we just train on train_dataset and validate on val_dataset
-    meta_model.train(X_train, y_train)
-    meta_model.save("weights/meta_classifier.pkl")
-    
-    # ---------------------------------------------------------
-    # FINAL TESTING PHASE (IEEE METRICS)
-    # ---------------------------------------------------------
-    print("\n" + "="*50)
-    print("🚀 RUNNING FINAL METRICS ON UNSEEN TEST SET (15%)")
-    print("="*50)
-    
-    all_preds = []
-    for x in X_test:
-        pred = meta_model.predict(x)
-        all_preds.append(pred)
+    # Final Extract
+    cnn.eval()
+    def get_final_cnn(loader):
+        feats = []
+        with torch.no_grad():
+            for batch_dicts, _ in loader:
+                for item in batch_dicts:
+                    cnn_input = item['cnn_input'].unsqueeze(0).to(device)
+                    feats.append(cnn(cnn_input).cpu().numpy().flatten())
+        return np.array(feats)
         
-    acc = accuracy_score(y_test, all_preds)
-    prec = precision_score(y_test, all_preds, zero_division=0)
-    rec = recall_score(y_test, all_preds, zero_division=0)
-    f1 = f1_score(y_test, all_preds, zero_division=0)
-    cm = confusion_matrix(y_test, all_preds)
+    cnn_train_final = get_final_cnn(extract_train_loader)
+    cnn_test_final = get_final_cnn(test_loader)
+    
+    X_train_final = np.concatenate([cnn_train_final, pre_train[0], pre_train[1].reshape(-1, 1)], axis=1)
+    X_test_final = np.concatenate([cnn_test_final, pre_test[0], pre_test[1].reshape(-1, 1)], axis=1)
+    
+    xgb_params = {
+        'max_depth': best['xgb_max_depth'], 'learning_rate': best['xgb_lr'],
+        'n_estimators': best['xgb_n_estimators'], 'subsample': best['xgb_subsample']
+    }
+    meta = MetaClassifier(use_logistic_regression=True, xgb_params=xgb_params)
+    meta.train(X_train_final, pre_train[2])
+    meta.save("weights/meta_classifier.pkl")
+    
+    # Test Metrics
+    print("\n" + "="*50)
+    print("🚀 FINAL METRICS ON UNSEEN TEST SET (15%)")
+    print("="*50)
+    all_preds = [meta.predict(x) for x in X_test_final]
+    
+    acc = accuracy_score(pre_test[2], all_preds)
+    prec = precision_score(pre_test[2], all_preds, zero_division=0)
+    rec = recall_score(pre_test[2], all_preds, zero_division=0)
+    f1 = f1_score(pre_test[2], all_preds, zero_division=0)
+    cm = confusion_matrix(pre_test[2], all_preds)
     
     print(f"Accuracy:  {acc*100:.2f}%")
-    print(f"Precision: {prec*100:.2f}%  <-- (When it flags Phishing, it's right {prec*100:.2f}% of the time)")
-    print(f"Recall:    {rec*100:.2f}%  <-- (Caught {rec*100:.2f}% of all actual Phishing attacks)")
-    print(f"F1-Score:  {f1*100:.2f}%  <-- (Overall harmonic balance metric)")
+    print(f"Precision: {prec*100:.2f}%")
+    print(f"Recall:    {rec*100:.2f}%")
+    print(f"F1-Score:  {f1*100:.2f}%")
     print("\nConfusion Matrix:")
-    print(f"True Negatives (Correctly Safe):   {cm[0][0]}")
-    print(f"False Positives (Mistake blocked): {cm[0][1]}")
-    print(f"False Negatives (Missed Phish):    {cm[1][0]}")
-    print(f"True Positives (Caught Phish):     {cm[1][1]}")
-    print("="*50 + "\n")
+    print(f"True Negatives:  {cm[0][0]}")
+    print(f"False Positives: {cm[0][1]}")
+    print(f"False Negatives: {cm[1][0]}")
+    print(f"True Positives:  {cm[1][1]}")
 
 if __name__ == "__main__":
-    train_model(epochs=5, batch_size=4)
+    train_model(batch_size=4, n_optuna_trials=10)

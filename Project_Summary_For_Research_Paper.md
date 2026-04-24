@@ -20,8 +20,10 @@ The core innovation is the fusion of three distinct analytical engines into a si
 #### Modality 1: Structural Sequence Analysis (CNN1D)
 Phishing kits often use automated templates that share a hidden mathematical structure, regardless of the visual CSS. The raw HTML is parsed into a sequence of structural tags, which is fed into a 1-Dimensional Convolutional Neural Network (CNN). The CNN identifies anomalous nested hierarchies and structural irregularities, outputting a **128-dimensional structural vector**.
 
-#### Modality 2: Semantic Intent Analysis (CodeBERT)
-To understand the *intent* of the malicious JavaScript and form submissions, a pre-trained CodeBERT transformer model is employed. Because transformers have a strict 512-token limit, we engineered an **HTML Distillation Engine** (`html_parser.py`) that explicitly strips visual noise (`<div>`, `<svg>`, `<style>`) and isolates only the semantic core: `<script>`, `<form>`, and `<a>` tags. CodeBERT compresses this contextual intent into a dense **768-dimensional semantic vector**.
+#### Modality 2: Semantic Intent Analysis (CodeBERT via PEFT LoRA & Overlapping Chunking)
+To understand the *intent* of the malicious JavaScript and form submissions, a pre-trained CodeBERT transformer model is employed. Because standard transformers impose a strict 512-token limit, attackers often attempt to bypass detection by appending massive blocks of whitespace or dead code to push malicious payloads out of the sequence length. To counter this, we engineered an **Overlapping Chunking Mechanism**. The CodeBERT engine chunks the entire distilled HTML sequence into 512-token windows with a 50-token overlap, ensuring payloads split across boundaries are not missed. Each chunk is processed independently, and a **Global Max Pooling** operation is applied across all chunk embeddings (`torch.max(dim=0)`) to extract the most malicious signal present anywhere in the document, compressing it back into a single **768-dimensional semantic vector**. 
+
+Furthermore, to adapt CodeBERT specifically to zero-day phishing semantics without suffering from catastrophic forgetting, we fine-tune the attention layers utilizing **Parameter-Efficient Fine-Tuning (PEFT)** with **Low-Rank Adaptation (LoRA)** before freezing the model for feature extraction.
 
 #### Modality 3: Lexical URL & Routing Heuristics
 To eliminate Domain Blindness, the system evaluates the target endpoint's location and routing behavior:
@@ -30,9 +32,10 @@ To eliminate Domain Blindness, the system evaluates the target endpoint's locati
 3. **Form Action Routing:** Scans `<form>` tags for suspicious data-drop endpoints (e.g., routing to a random `.php` script).
 These heuristics produce a highly determinative scalar vector.
 
-### 3.3. The Stacking Ensemble (XGBoost Meta-Classifier)
+### 3.3. The Stacking Ensemble (XGBoost Meta-Classifier & Optuna Optimization)
 The outputs of the three modalities are flattened and concatenated into an **898-dimensional unified vector** (128 + 768 + 2 Lexical Heuristics). This vector is fed into an XGBoost Meta-Classifier.
-- **Optimization Note:** The XGBoost model is specifically constrained (`max_depth=3`) to prevent overfitting on smaller datasets. Additionally, `tree_method='hist'` and thread limitations are employed to ensure stable execution on modern ARM architectures (e.g., Apple Silicon M-Series), preventing OpenMP segmentation faults.
+- **Optuna Hyperparameter Optimization:** To ensure maximum statistical performance without manual tuning bias, the architecture employs the **Optuna** optimization framework. Optuna mathematically searches the hyperparameter space to jointly optimize the Deep Learning parameters (CNN learning rates and filter geometries) alongside the XGBoost ensemble parameters (`max_depth`, `subsample`, `learning_rate`) via multi-trial validation.
+- **Hardware Optimization Note:** Additionally, `tree_method='hist'` and thread limitations are employed to ensure stable execution on modern ARM architectures (e.g., Apple Silicon M-Series), preventing OpenMP segmentation faults.
 
 ### 3.4. Experimental Reproducibility & Deterministic Training
 To guarantee exact statistical reproducibility for IEEE reporting, all stochastic components across the pipeline are strictly locked. A global random seed (`42`) is enforced across Python's native `random` module, NumPy, and PyTorch (including CPU, CUDA, and Apple MPS backends). Furthermore, non-deterministic PyTorch algorithms (such as cuDNN benchmark heuristics) are disabled. This ensures that the random data split, CNN weight initialization, and batch shuffling remain 100% deterministic, allowing independent verification of precision, recall, and F1-score metrics.

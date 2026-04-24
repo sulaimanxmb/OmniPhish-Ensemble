@@ -9,24 +9,28 @@ os.environ['KMP_DUPLICATE_OK'] = 'True'
 os.environ['OMP_NUM_THREADS'] = '1'
 
 class MetaClassifier:
-    def __init__(self, use_logistic_regression=True):
+    def __init__(self, use_logistic_regression=True, xgb_params=None):
         """
         Implements a Stacking Ensemble:
         XGBoost is the primary tabular classifier.
         Logistic Regression is optionally used as a fast, highly-regularized baseline.
         """
-        # XGBoost parameters optimized for small dataset (max_depth=3 to prevent overfitting)
-        self.xgb_model = xgb.XGBClassifier(
-            n_estimators=100, 
-            max_depth=3, 
-            learning_rate=0.1, 
-            subsample=0.8,
-            colsample_bytree=0.8,
-            random_state=42,
-            eval_metric='logloss',
-            n_jobs=1,  # CRITICAL: Prevents segmentation fault on macOS M-series chips
-            tree_method='hist' # CRITICAL: Bypasses the exact greedy algorithm which triggers the segfault
-        )
+        default_params = {
+            'n_estimators': 100, 
+            'max_depth': 3, 
+            'learning_rate': 0.1, 
+            'subsample': 0.8,
+            'colsample_bytree': 0.8,
+            'random_state': 42,
+            'eval_metric': 'logloss',
+            'n_jobs': 1,  # CRITICAL: Prevents segmentation fault on macOS M-series chips
+            'tree_method': 'hist' # CRITICAL: Bypasses the exact greedy algorithm which triggers the segfault
+        }
+        
+        if xgb_params is not None:
+            default_params.update(xgb_params)
+            
+        self.xgb_model = xgb.XGBClassifier(**default_params)
         
         self.use_lr = use_logistic_regression
         if self.use_lr:
