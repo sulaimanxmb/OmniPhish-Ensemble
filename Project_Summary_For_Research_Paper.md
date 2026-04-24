@@ -34,6 +34,9 @@ These heuristics produce a highly determinative scalar vector.
 The outputs of the three modalities are flattened and concatenated into an **898-dimensional unified vector** (128 + 768 + 2 Lexical Heuristics). This vector is fed into an XGBoost Meta-Classifier.
 - **Optimization Note:** The XGBoost model is specifically constrained (`max_depth=3`) to prevent overfitting on smaller datasets. Additionally, `tree_method='hist'` and thread limitations are employed to ensure stable execution on modern ARM architectures (e.g., Apple Silicon M-Series), preventing OpenMP segmentation faults.
 
+### 3.4. Experimental Reproducibility & Deterministic Training
+To guarantee exact statistical reproducibility for IEEE reporting, all stochastic components across the pipeline are strictly locked. A global random seed (`42`) is enforced across Python's native `random` module, NumPy, and PyTorch (including CPU, CUDA, and Apple MPS backends). Furthermore, non-deterministic PyTorch algorithms (such as cuDNN benchmark heuristics) are disabled. This ensures that the random data split, CNN weight initialization, and batch shuffling remain 100% deterministic, allowing independent verification of precision, recall, and F1-score metrics.
+
 ## 4. Model Training & Live Inference Workflow
 1. **Baseline Comparison:** The architecture is evaluated against a control group—a Random Forest classifier relying purely on 8 manual HTML heuristics.
 2. **Deep Learning Ensemble:** The core system trains the CNN on structural sequences, freezes CodeBERT to extract the 768-D vectors, and finally trains the XGBoost Stacking Classifier.
