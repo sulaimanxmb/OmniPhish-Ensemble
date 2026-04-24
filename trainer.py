@@ -14,12 +14,10 @@ import numpy as np
 import optuna
 
 def set_seed(seed=42):
-    """Locks all random seeds for exact reproducibility."""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
     if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
         torch.mps.manual_seed(seed)
@@ -29,147 +27,19 @@ def set_seed(seed=42):
 
 set_seed(42)
 
-def pre_extract_codebert_features(dataloader, codebert, device):
-    codebert.eval()
-    cb_features, heuristics, labels_list = [], [], []
-    
-    with torch.no_grad():
-        for batch_dicts, labels in tqdm(dataloader, desc="Extracting Static CodeBERT Features"):
-            for item, label in zip(batch_dicts, labels):
-                cb_text = item['codebert_text']
-                emb = codebert.compute_embedding(cb_text)
-                cb_features.append(emb.cpu().numpy().flatten())
-                heuristics.append(item['heuristic'].cpu().numpy())
-                labels_list.append(label.item())
-                
-    return np.array(cb_features), np.array(heuristics), np.array(labels_list)
-
-def objective(trial, train_loader, extract_train_loader, extract_val_loader, pre_train, pre_val, device):
-    # 1. Suggest CNN Hyperparameters
-    lr = trial.suggest_float("cnn_lr", 1e-4, 5e-3, log=True)
-    num_filters = trial.suggest_categorical("cnn_filters", [64, 128])
-    embedding_dim = trial.suggest_categorical("cnn_emb_dim", [32, 64])
-    
-    cnn = CNN1DEmbedding(embedding_dim=embedding_dim, num_filters=num_filters).to(device)
-    temp_classifier = nn.Linear(128, 1).to(device)
-    optimizer = optim.Adam(list(cnn.parameters()) + list(temp_classifier.parameters()), lr=lr)
-    criterion = nn.BCEWithLogitsLoss()
-    
-    # Train CNN for limited epochs during Optuna trials
-    cnn.train()
-    for epoch in range(2):
-        for batch_dicts, labels in train_loader:
-            labels = labels.to(device).unsqueeze(1).float()
-            optimizer.zero_grad()
-            batch_logits = []
-            for item in batch_dicts:
-                cnn_input = item['cnn_input'].unsqueeze(0).to(device)
-                emb = cnn(cnn_input)
-                batch_logits.append(emb)
-            batch_tensor = torch.cat(batch_logits, dim=0)
-            loss = criterion(temp_classifier(batch_tensor), labels)
-            loss.backward()
-            optimizer.step()
-            
-    # Extract CNN features using non-shuffled loaders to align with precomputed arrays
-    cnn.eval()
-    def get_cnn_features(loader):
-        feats = []
-        with torch.no_grad():
-            for batch_dicts, _ in loader:
-                for item in batch_dicts:
-                    cnn_input = item['cnn_input'].unsqueeze(0).to(device)
-                    emb = cnn(cnn_input)
-                    feats.append(emb.cpu().numpy().flatten())
-        return np.array(feats)
-        
-    cnn_train = get_cnn_features(extract_train_loader)
-    cnn_val = get_cnn_features(extract_val_loader)
-    
-    # Concat features: CNN (128) + CodeBERT (768) + Heuristics (1)
-    X_train = np.concatenate([cnn_train, pre_train[0], pre_train[1].reshape(-1, 1)], axis=1)
-    X_val = np.concatenate([cnn_val, pre_val[0], pre_val[1].reshape(-1, 1)], axis=1)
-    
-    # 2. Suggest XGBoost Hyperparameters
-    xgb_params = {
-        'max_depth': trial.suggest_int('xgb_max_depth', 2, 5),
-        'learning_rate': trial.suggest_float('xgb_lr', 1e-3, 0.3, log=True),
-        'n_estimators': trial.suggest_int('xgb_n_estimators', 50, 150),
-        'subsample': trial.suggest_float('xgb_subsample', 0.6, 1.0)
-    }
-    
-    meta = MetaClassifier(use_logistic_regression=False, xgb_params=xgb_params)
-    meta.train(X_train, pre_train[2])
-    
-    preds = []
-    for x in X_val:
-        preds.append(meta.predict(x))
-        
-    f1 = f1_score(pre_val[2], preds, zero_division=0)
-    return f1
-
-def train_model(batch_size=4, n_optuna_trials=10):
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-    print(f"Training on device: {device}")
-    
-    dirs = {'phishing': 'dataset/raw_html/phishing', 'benign': 'dataset/raw_html/benign'}
-    dataset = PhishingDataset(dirs, undersample_benign=False)
-    dataset_len = len(dataset)
-    if dataset_len == 0:
-        print("Dataset is empty.")
-        return
-        
-    train_size = int(0.7 * dataset_len)
-    val_size = int(0.15 * dataset_len)
-    test_size = dataset_len - train_size - val_size
-    
-    train_dataset, val_dataset, test_dataset = random_split(
-        dataset, [train_size, val_size, test_size],
-        generator=torch.Generator().manual_seed(42)
-    )
-    
-    # Shuffled loader for CNN training
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate)
-    # Non-shuffled loaders for feature extraction alignment
-    extract_train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate)
-    extract_val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate)
-    
-    codebert = CodeBERTEmbedding().to(device)
-
-    # Pre-extract CodeBERT embeddings since they are frozen during Optuna trials
+def train_cnn(train_loader, device, epochs=5):
     print("\n" + "="*50)
-    print("🚀 PRE-EXTRACTING STATIC CODEBERT FEATURES FOR OPTUNA")
+    print("🚀 PHASE 1: Training Structural CNN")
     print("="*50)
-    pre_train = pre_extract_codebert_features(extract_train_loader, codebert, device)
-    pre_val = pre_extract_codebert_features(extract_val_loader, codebert, device)
-    pre_test = pre_extract_codebert_features(test_loader, codebert, device)
-    
-    # --- OPTUNA STUDY ---
-    print("\n" + "="*50)
-    print("🚀 LAUNCHING OPTUNA: CNN + XGBoost Joint Optimization")
-    print("="*50)
-    study = optuna.create_study(direction="maximize")
-    study.optimize(lambda trial: objective(trial, train_loader, extract_train_loader, extract_val_loader, pre_train, pre_val, device), n_trials=n_optuna_trials)
-    
-    print("\n[+] Best Optuna Trial:")
-    print(f"  F1-Score: {study.best_value:.4f}")
-    print("  Params: ")
-    for key, value in study.best_trial.params.items():
-        print(f"    {key}: {value}")
-        
-    print("\n🚀 FINAL TRAINING WITH BEST PARAMS...")
-    best = study.best_trial.params
-    
-    # Retrain CNN fully
-    cnn = CNN1DEmbedding(embedding_dim=best['cnn_emb_dim'], num_filters=best['cnn_filters']).to(device)
+    cnn = CNN1DEmbedding(embedding_dim=64, num_filters=128).to(device)
     temp_classifier = nn.Linear(128, 1).to(device)
-    optimizer = optim.Adam(list(cnn.parameters()) + list(temp_classifier.parameters()), lr=best['cnn_lr'])
+    optimizer = optim.Adam(list(cnn.parameters()) + list(temp_classifier.parameters()), lr=1e-3)
     criterion = nn.BCEWithLogitsLoss()
     
     cnn.train()
-    for epoch in range(5):
-        for batch_dicts, labels in tqdm(train_loader, desc=f"Final CNN Epoch {epoch+1}/5"):
+    for epoch in range(epochs):
+        epoch_loss = 0.0
+        for batch_dicts, labels in tqdm(train_loader, desc=f"CNN Epoch {epoch+1}/{epochs}"):
             labels = labels.to(device).unsqueeze(1).float()
             optimizer.zero_grad()
             batch_logits = []
@@ -179,51 +49,120 @@ def train_model(batch_size=4, n_optuna_trials=10):
             loss = criterion(temp_classifier(torch.cat(batch_logits, dim=0)), labels)
             loss.backward()
             optimizer.step()
+            epoch_loss += loss.item()
             
     os.makedirs("weights", exist_ok=True)
     torch.save(cnn.state_dict(), "weights/cnn_trained.pt")
-    
-    # Final Extract
+    return cnn
+
+def pre_extract_features(dataloader, cnn, codebert, device, desc="Extracting Features"):
     cnn.eval()
-    def get_final_cnn(loader):
-        feats = []
-        with torch.no_grad():
-            for batch_dicts, _ in loader:
-                for item in batch_dicts:
-                    cnn_input = item['cnn_input'].unsqueeze(0).to(device)
-                    feats.append(cnn(cnn_input).cpu().numpy().flatten())
-        return np.array(feats)
-        
-    cnn_train_final = get_final_cnn(extract_train_loader)
-    cnn_test_final = get_final_cnn(test_loader)
+    codebert.eval()
     
-    X_train_final = np.concatenate([cnn_train_final, pre_train[0], pre_train[1].reshape(-1, 1)], axis=1)
-    X_test_final = np.concatenate([cnn_test_final, pre_test[0], pre_test[1].reshape(-1, 1)], axis=1)
+    cnn_feats, cb_feats, heuristics, labels_list = [], [], [], []
     
+    with torch.no_grad():
+        for batch_dicts, labels in tqdm(dataloader, desc=desc):
+            for item, label in zip(batch_dicts, labels):
+                # CNN
+                cnn_input = item['cnn_input'].unsqueeze(0).to(device)
+                c_emb = cnn(cnn_input).cpu().numpy().flatten()
+                cnn_feats.append(c_emb)
+                
+                # CodeBERT
+                cb_text = item['codebert_text']
+                cb_emb = codebert.compute_embedding(cb_text).cpu().numpy().flatten()
+                cb_feats.append(cb_emb)
+                
+                # Heuristics
+                heuristics.append(item['heuristic'].cpu().numpy())
+                labels_list.append(label.item())
+                
+    X = np.concatenate([
+        np.array(cnn_feats), 
+        np.array(cb_feats), 
+        np.array(heuristics).reshape(-1, 1)
+    ], axis=1)
+    return X, np.array(labels_list)
+
+def objective(trial, X_train, y_train, X_val, y_val):
     xgb_params = {
-        'max_depth': best['xgb_max_depth'], 'learning_rate': best['xgb_lr'],
-        'n_estimators': best['xgb_n_estimators'], 'subsample': best['xgb_subsample']
+        'max_depth': trial.suggest_int('xgb_max_depth', 2, 6),
+        'learning_rate': trial.suggest_float('xgb_lr', 1e-3, 0.3, log=True),
+        'n_estimators': trial.suggest_int('xgb_n_estimators', 50, 300),
+        'subsample': trial.suggest_float('xgb_subsample', 0.5, 1.0)
     }
-    meta = MetaClassifier(use_logistic_regression=True, xgb_params=xgb_params)
-    meta.train(X_train_final, pre_train[2])
+    
+    meta = MetaClassifier(use_logistic_regression=False, xgb_params=xgb_params)
+    meta.train(X_train, y_train)
+    
+    preds = [meta.predict(x) for x in X_val]
+    return f1_score(y_val, preds, zero_division=0)
+
+def train_model(batch_size=4, n_optuna_trials=30):
+    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    print(f"Training on device: {device}")
+    
+    dirs = {'phishing': 'dataset/raw_html/phishing', 'benign': 'dataset/raw_html/benign'}
+    dataset = PhishingDataset(dirs, undersample_benign=False)
+    if len(dataset) == 0:
+        print("Dataset is empty.")
+        return
+        
+    train_size = int(0.7 * len(dataset))
+    val_size = int(0.15 * len(dataset))
+    test_size = len(dataset) - train_size - val_size
+    
+    train_dataset, val_dataset, test_dataset = random_split(
+        dataset, [train_size, val_size, test_size],
+        generator=torch.Generator().manual_seed(42)
+    )
+    
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate)
+    extract_train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate)
+    extract_val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate)
+    
+    # 1. Train CNN
+    cnn = train_cnn(train_loader, device, epochs=5)
+    codebert = CodeBERTEmbedding().to(device)
+    
+    # 2. Extract Features
+    print("\n" + "="*50)
+    print("🚀 PHASE 2: Pre-Extracting Deep Learning Features")
+    print("="*50)
+    X_train, y_train = pre_extract_features(extract_train_loader, cnn, codebert, device, "Extracting Train")
+    X_val, y_val = pre_extract_features(extract_val_loader, cnn, codebert, device, "Extracting Val")
+    X_test, y_test = pre_extract_features(test_loader, cnn, codebert, device, "Extracting Test")
+    
+    # 3. Optuna Optimization for XGBoost
+    print("\n" + "="*50)
+    print("🚀 PHASE 3: Optuna XGBoost Meta-Classifier Optimization")
+    print("="*50)
+    study = optuna.create_study(direction="maximize")
+    study.optimize(lambda trial: objective(trial, X_train, y_train, X_val, y_val), n_trials=n_optuna_trials)
+    
+    print("\n[+] Best Optuna Trial:")
+    print(f"  F1-Score: {study.best_value:.4f}")
+    for key, value in study.best_trial.params.items():
+        print(f"  {key}: {value}")
+        
+    # 4. Final Meta-Classifier
+    print("\n🚀 FINAL TRAINING WITH BEST PARAMS...")
+    meta = MetaClassifier(use_logistic_regression=True, xgb_params=study.best_trial.params)
+    meta.train(X_train, y_train)
     meta.save("weights/meta_classifier.pkl")
     
-    # Test Metrics
     print("\n" + "="*50)
     print("🚀 FINAL METRICS ON UNSEEN TEST SET (15%)")
     print("="*50)
-    all_preds = [meta.predict(x) for x in X_test_final]
+    all_preds = [meta.predict(x) for x in X_test]
     
-    acc = accuracy_score(pre_test[2], all_preds)
-    prec = precision_score(pre_test[2], all_preds, zero_division=0)
-    rec = recall_score(pre_test[2], all_preds, zero_division=0)
-    f1 = f1_score(pre_test[2], all_preds, zero_division=0)
-    cm = confusion_matrix(pre_test[2], all_preds)
-    
-    print(f"Accuracy:  {acc*100:.2f}%")
-    print(f"Precision: {prec*100:.2f}%")
-    print(f"Recall:    {rec*100:.2f}%")
-    print(f"F1-Score:  {f1*100:.2f}%")
+    print(f"Accuracy:  {accuracy_score(y_test, all_preds)*100:.2f}%")
+    print(f"Precision: {precision_score(y_test, all_preds, zero_division=0)*100:.2f}%")
+    print(f"Recall:    {recall_score(y_test, all_preds, zero_division=0)*100:.2f}%")
+    print(f"F1-Score:  {f1_score(y_test, all_preds, zero_division=0)*100:.2f}%")
+    cm = confusion_matrix(y_test, all_preds)
     print("\nConfusion Matrix:")
     print(f"True Negatives:  {cm[0][0]}")
     print(f"False Positives: {cm[0][1]}")
@@ -231,4 +170,4 @@ def train_model(batch_size=4, n_optuna_trials=10):
     print(f"True Positives:  {cm[1][1]}")
 
 if __name__ == "__main__":
-    train_model(batch_size=4, n_optuna_trials=10)
+    train_model(batch_size=4, n_optuna_trials=30)

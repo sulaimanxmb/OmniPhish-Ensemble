@@ -32,7 +32,7 @@ These heuristics produce a highly determinative scalar vector.
 
 ### 3.3. The Stacking Ensemble (XGBoost Meta-Classifier & Optuna Optimization)
 The outputs of the three modalities are flattened and concatenated into an **898-dimensional unified vector** (128 + 768 + 2 Lexical Heuristics). This vector is fed into an XGBoost Meta-Classifier.
-- **Optuna Hyperparameter Optimization:** To ensure maximum statistical performance without manual tuning bias, the architecture employs the **Optuna** optimization framework. Optuna mathematically searches the hyperparameter space to jointly optimize the Deep Learning parameters (CNN learning rates and filter geometries) alongside the XGBoost ensemble parameters (`max_depth`, `subsample`, `learning_rate`) via multi-trial validation.
+- **Optuna Hyperparameter Optimization:** To ensure maximum statistical performance without manual tuning bias, the architecture employs the **Optuna** optimization framework. The deep learning models (CNN and CodeBERT) act as fixed, deterministic feature extractors to prevent overfitting on the limited dataset size. Optuna is then deployed exclusively on the extracted hybrid vector space to mathematically optimize the XGBoost ensemble parameters (`max_depth`, `subsample`, `learning_rate`, `n_estimators`) via rapid multi-trial validation.
 - **Hardware Optimization Note:** Additionally, `tree_method='hist'` and thread limitations are employed to ensure stable execution on modern ARM architectures (e.g., Apple Silicon M-Series), preventing OpenMP segmentation faults.
 
 ### 3.4. Experimental Reproducibility & Deterministic Training
