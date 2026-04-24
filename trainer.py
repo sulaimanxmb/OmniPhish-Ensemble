@@ -7,9 +7,27 @@ from cnn_model import CNN1DEmbedding
 from transformer_model import CodeBERTEmbedding
 from classifier import MetaClassifier
 import os
+import random
 from tqdm import tqdm
 from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, accuracy_score
 import numpy as np
+
+def set_seed(seed=42):
+    """Locks all random seeds for exact reproducibility."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    # Also for Apple MPS if available
+    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        torch.mps.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    os.environ['PYTHONHASHSEED'] = str(seed)
+
+set_seed(42)
 
 def extract_features(cnn, codebert, dataloader, device):
     """

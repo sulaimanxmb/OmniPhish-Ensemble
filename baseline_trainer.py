@@ -9,6 +9,16 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 
 from dataset_loader import PhishingDataset
 from baseline_features import extract_manual_features
+import random
+
+def set_seed(seed=42):
+    """Locks all random seeds for exact reproducibility."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+
+set_seed(42)
 
 def load_and_extract_features():
     """
