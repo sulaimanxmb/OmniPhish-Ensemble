@@ -48,3 +48,6 @@ Crucially, SMOTE is applied *exclusively* to the isolated training subset of eac
 
 ## 5. Conclusion
 By fusing structural HTML sequences, distilled semantic JavaScript intent, and lexical typosquatting heuristics, the Dual-Modal Stacking Ensemble successfully identifies highly-evasive, visually-cloned zero-day phishing pages without relying on easily manipulated rendering algorithms. This architecture demonstrates that focusing on the intrinsic function and routing logic of a web page yields significantly higher precision and eliminates the Domain Blindness inherent in traditional visual scanners.
+
+## 6. Project Management & AI Integration
+To ensure code consistency and enforce architectural constraints during ongoing development, a dedicated `GEMINI.md` context file is utilized. This maintains strict adherence to hardware limitations, dataset sanitation protocols, and the continuous updating of this research summary for every codebase modification.
