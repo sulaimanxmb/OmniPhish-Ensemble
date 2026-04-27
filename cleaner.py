@@ -151,29 +151,37 @@ def main():
         filename = re.sub(r'[^a-zA-Z0-9_\-]', '_', filename)
         return filename + ".html"
         
-    benign_txt = "benign_dataset.txt"
+    benign_txt = "top-1m.txt"
     if os.path.exists(benign_txt):
         print(f"\nSynchronizing '{benign_txt}' with the verified dataset...")
         with open(benign_txt, "r", encoding="utf-8") as f:
-            original_urls = [line.strip() for line in f if line.strip()]
+            original_lines = [line.strip() for line in f if line.strip()]
             
-        remaining_urls = []
+        remaining_lines = []
         removed_count = 0
-        for url in original_urls:
-            expected_file = os.path.join('dataset/raw_html/benign', sanitize_filename_local(url))
+        for line in original_lines:
+            # Parse Tranco format (1,google.com) or fallback to raw URL
+            parts = line.split(',')
+            if len(parts) == 2:
+                domain = parts[1].strip()
+                url_to_check = f"https://{domain}"
+            else:
+                url_to_check = line
+                
+            expected_file = os.path.join('dataset/raw_html/benign', sanitize_filename_local(url_to_check))
             if os.path.exists(expected_file):
                 # File survived the cleaner! It's valid. Remove URL from the scrape feed.
                 removed_count += 1
             else:
                 # File was deleted by cleaner (or never scraped). Keep the URL in the text feed to retry.
-                remaining_urls.append(url)
+                remaining_lines.append(line)
                 
         if removed_count > 0:
             with open(benign_txt, "w", encoding="utf-8") as f:
-                for url in remaining_urls:
-                    f.write(url + "\n")
+                for line in remaining_lines:
+                    f.write(line + "\n")
             print(f"[+] Removed {removed_count} completed/valid URLs from {benign_txt}.")
-            print(f"[*] {len(remaining_urls)} pending URLs remain in the file queue.")
+            print(f"[*] {len(remaining_lines)} pending URLs remain in the file queue.")
         else:
             print(f"[*] No valid, matched URLs were found to remove from {benign_txt}.")
 
