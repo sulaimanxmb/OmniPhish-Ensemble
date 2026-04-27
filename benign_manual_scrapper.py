@@ -35,13 +35,13 @@ async def extract_full_html(page):
 
 async def main():
     manual_benign = []
-    if os.path.exists("benign_dataset.txt"):
-        with open("benign_dataset.txt", "r", encoding="utf-8") as f:
+    if os.path.exists("top-1m.txt"):
+        with open("top-1m.txt", "r", encoding="utf-8") as f:
             for line in f:
                 if line.strip():
                     manual_benign.append(line.strip())
     else:
-        print("Error: benign_dataset.txt missing!")
+        print("Error: top-1m.txt missing!")
         return
 
     targets_benign = []
@@ -98,7 +98,7 @@ async def main():
                     const btn = document.createElement('button');
                     btn.innerHTML = '📥 SAVE LOGIN HTML & NEXT';
                     btn.style.position = 'fixed';
-                    btn.style.top = '20px';
+                    btn.style.bottom = '20px';
                     btn.style.right = '20px';
                     btn.style.zIndex = '2147483647'; // Max z-index to stay on top
                     btn.style.padding = '15px 20px';
