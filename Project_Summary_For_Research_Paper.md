@@ -10,7 +10,7 @@ Modern phishing attacks heavily employ evasion techniques like CAPTCHA blockades
 
 ### 3.1. Data Ingestion Pipeline
 To capture the true state of zero-day phishing kits, the system utilizes an automated scraping engine built on Playwright with Firefox engine spoofing. This approach actively renders JavaScript, bypassing Cloudflare and anti-bot systems, to extract the post-rendered HTML DOM. 
-- **Benign Data:** Collected via tiered scrapers, including an advanced anti-bot scraper and a "Cyborg" manual scraper designed to safely navigate multi-factor authentication (MFA) and Single Sign-On (SSO) enterprise logins.
+- **Benign Data:** To guarantee maximum data quality and zero noise, the baseline benign dataset is aggregated almost exclusively via a custom "Cyborg" manual scraper (`benign_manual_scrapper.py`). This engine iterates through the Tranco Top 1 Million list, allowing a human-in-the-loop to actively solve CAPTCHAs and navigate deep into Multi-Factor Authentication (MFA) and Single Sign-On (SSO) enterprise login portals before capturing the pristine post-rendered DOM.
 - **Sanitation Engine:** Neural networks are highly sensitive to noise. The `cleaner.py` module structurally validates every HTML file, enforces the existence of credential `<input>` fields, and eliminates MD5 hash duplicates, ensuring a pristine dataset.
 
 ### 3.2. Feature Engineering & The Three Modalities
