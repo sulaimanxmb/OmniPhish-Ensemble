@@ -38,8 +38,15 @@ async def main():
     if os.path.exists("top-1m.txt"):
         with open("top-1m.txt", "r", encoding="utf-8") as f:
             for line in f:
-                if line.strip():
-                    manual_benign.append(line.strip())
+                line = line.strip()
+                if line:
+                    # Parse the Tranco/Umbrella format (e.g., "1,google.com")
+                    parts = line.split(',')
+                    if len(parts) == 2:
+                        domain = parts[1].strip()
+                        # Playwright requires the http/https protocol
+                        url = f"https://{domain}"
+                        manual_benign.append(url)
     else:
         print("Error: top-1m.txt missing!")
         return
