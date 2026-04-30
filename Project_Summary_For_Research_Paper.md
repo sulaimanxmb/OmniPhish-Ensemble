@@ -52,5 +52,11 @@ Crucially, SMOTE is applied *exclusively* to the isolated training subset of eac
 ## 5. Conclusion
 By fusing structural HTML sequences, distilled semantic JavaScript intent, and lexical typosquatting heuristics, the Dual-Modal Stacking Ensemble successfully identifies highly-evasive, visually-cloned zero-day phishing pages without relying on easily manipulated rendering algorithms. This architecture demonstrates that focusing on the intrinsic function and routing logic of a web page yields significantly higher precision and eliminates the Domain Blindness inherent in traditional visual scanners.
 
-## 6. Project Management & AI Integration
+## 6. Limitations & Future Work
+While the Dual-Modal Stacking Ensemble achieves near state-of-the-art accuracy for static source-code analysis, certain highly advanced evasion techniques remain out of scope. Future iterations of this architecture could address these limitations through three primary vectors:
+1. **Multi-Modal Vision-Language Integration:** The current architecture operates entirely on raw source code and is blind to visual pixel rendering. Attackers employing "image-based phishing"—where the entire login interface is a `.jpg` screenshot with invisible HTML inputs floated over it—can evade static text analysis. Integrating a Vision-Language Model (VLM) or Siamese Neural Network to analyze a rendered screenshot of the DOM would close this visual evasion gap.
+2. **Graph Neural Networks (GNNs):** The CNN1D currently processes the HTML DOM as a flat, sequential array of structural tags. Because the DOM is inherently hierarchical, upgrading the structural modality to a Graph Convolutional Network (GCN) would allow the AI to natively map complex parent-child tag relationships mathematically, mirroring actual browser rendering logic.
+3. **Dynamic Behavioral Sandboxing:** The pipeline is currently limited to static analysis. Deeply encrypted phishing payloads that rely on runtime AES decryption loops hide their malicious forms until execution. Future pipelines should incorporate a headless dynamic sandbox to monitor real-time XHR/Fetch network requests and DOM mutations as the JavaScript payload actively executes.
+
+## 7. Project Management & AI Integration
 To ensure code consistency and enforce architectural constraints during ongoing development, a dedicated `GEMINI.md` context file is utilized. This maintains strict adherence to hardware limitations, dataset sanitation protocols, and the continuous updating of this research summary for every codebase modification.
