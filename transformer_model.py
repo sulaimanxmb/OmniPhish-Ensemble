@@ -9,7 +9,7 @@ transformers.logging.set_verbosity_error()
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 class CodeBERTEmbedding(nn.Module):
-    def __init__(self, model_name="microsoft/codebert-base"):
+    def __init__(self, model_name="microsoft/codebert-base", use_lora=False):
         super(CodeBERTEmbedding, self).__init__()
         self.tokenizer = RobertaTokenizer.from_pretrained(model_name)
         self.codebert = RobertaModel.from_pretrained(model_name)
@@ -17,9 +17,27 @@ class CodeBERTEmbedding(nn.Module):
         # Freeze CodeBERT to save memory, as it acts as a static feature extractor
         for param in self.codebert.parameters():
             param.requires_grad = False
+            
+        if use_lora:
+            try:
+                from peft import LoraConfig, get_peft_model
+                peft_config = LoraConfig(
+                    task_type="FEATURE_EXTRACTION",
+                    inference_mode=False,
+                    r=8,
+                    lora_alpha=32,
+                    lora_dropout=0.1,
+                    target_modules=["query", "value"]
+                )
+                self.codebert = get_peft_model(self.codebert, peft_config)
+                for name, param in self.codebert.named_parameters():
+                    if "lora" in name.lower():
+                        param.requires_grad = True
+                print("[CodeBERT] Initialized with LoRA (Low-Rank Adaptation).")
+            except ImportError:
+                print("\n[!] WARNING: 'peft' library not found. Run 'pip install peft'. CodeBERT will remain frozen without LoRA.\n")
                 
 
-            
     def compute_embedding(self, text, max_chunks=None):
         """
         Tokenizes text without truncation, applies 512-token chunks with 50-token overlap.

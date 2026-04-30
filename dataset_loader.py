@@ -7,6 +7,34 @@ from html_parser import clean_html, extract_codebert_tags
 from cnn_model import text_to_tensor
 from baseline_features import is_suspicious_action
 
+def get_dom_depth_stats(soup):
+    """
+    Recursively calculates the Maximum and Average DOM tree depth.
+    Phishing kits often use heavily obfuscated, deeply nested div tags.
+    """
+    max_depth = 0
+    total_depth = 0
+    node_count = 0
+    
+    def traverse(element, depth):
+        nonlocal max_depth, total_depth, node_count
+        if hasattr(element, 'children'):
+            for child in element.children:
+                if child.name is not None:  # Ensure it is an actual HTML Tag
+                    node_count += 1
+                    total_depth += depth
+                    if depth > max_depth:
+                        max_depth = depth
+                    traverse(child, depth + 1)
+                    
+    # Focus on the body to ignore head/meta data noise if possible
+    body = soup.find('body')
+    root = body if body else soup
+    traverse(root, 1)
+    
+    avg_depth = total_depth / node_count if node_count > 0 else 0.0
+    return float(max_depth), float(avg_depth)
+
 class PhishingDataset(Dataset):
     def __init__(self, raw_html_dirs, undersample_benign=False):
         """
@@ -72,18 +100,20 @@ class PhishingDataset(Dataset):
         # Extract tags for CodeBERT directly as string
         codebert_text = extract_codebert_tags(cleaned_html)
         
-        # Extract Suspicious Form Action heuristic
+        # Extract Suspicious Form Action and DOM Depth heuristic
         soup = BeautifulSoup(raw_html, 'html.parser')
-        suspicious_form_action = 0
+        suspicious_form_action = 0.0
         for form in soup.find_all('form'):
             if is_suspicious_action(form.get('action', '')):
-                suspicious_form_action = 1
+                suspicious_form_action = 1.0
                 break
+                
+        max_depth, avg_depth = get_dom_depth_stats(soup)
                 
         return {
             'cnn_input': cnn_tensor,
             'codebert_text': codebert_text,
-            'heuristic': torch.tensor([suspicious_form_action], dtype=torch.float32),
+            'heuristic': torch.tensor([suspicious_form_action, max_depth, avg_depth], dtype=torch.float32),
             'label': torch.tensor(label, dtype=torch.float32)
         }
 

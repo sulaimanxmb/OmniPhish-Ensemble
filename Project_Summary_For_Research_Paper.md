@@ -20,14 +20,17 @@ The core innovation is the fusion of three distinct analytical engines into a si
 #### Modality 1: Structural Sequence Analysis (CNN1D)
 Phishing kits often use automated templates that share a hidden mathematical structure, regardless of the visual CSS. The raw HTML is parsed into a sequence of structural tags, which is fed into a 1-Dimensional Convolutional Neural Network (CNN). The CNN identifies anomalous nested hierarchies and structural irregularities, outputting a **128-dimensional structural vector**.
 
-#### Modality 2: Semantic Intent Analysis (CodeBERT via Overlapping Chunking)
-To understand the *intent* of the malicious JavaScript and form submissions, a pre-trained CodeBERT transformer model is employed. Because standard transformers impose a strict 512-token limit, attackers often attempt to bypass detection by appending massive blocks of whitespace or dead code to push malicious payloads out of the sequence length. To counter this, we engineered an **Overlapping Chunking Mechanism**. The CodeBERT engine chunks the entire distilled HTML sequence into 512-token windows with a 50-token overlap, ensuring payloads split across boundaries are not missed. Each chunk is processed independently, and a **Global Max Pooling** operation is applied across all chunk embeddings (`torch.max(dim=0)`) to extract the most malicious signal present anywhere in the document, compressing it back into a single **768-dimensional semantic vector**. 
+#### Modality 2: Semantic Intent Analysis (CodeBERT via Overlapping Chunking & LoRA)
+To understand the *intent* of the malicious JavaScript and form submissions, a pre-trained CodeBERT transformer model is employed. 
+- **PEFT / LoRA Fine-Tuning:** To adapt the generic transformer specifically to phishing and obfuscation vocabularies, CodeBERT's attention heads are fine-tuned using Low-Rank Adaptation (LoRA). This drastically increases feature extraction accuracy while keeping the 125M base weights frozen, preventing overfitting on smaller datasets.
+- **Overlapping Chunking Mechanism:** Because standard transformers impose a strict 512-token limit, attackers often attempt to bypass detection by appending massive blocks of whitespace or dead code to push malicious payloads out of the sequence length. To counter this, the CodeBERT engine chunks the entire distilled HTML sequence into 512-token windows with a 50-token overlap, ensuring payloads split across boundaries are not missed. Each chunk is processed independently, and a **Global Max Pooling** operation is applied across all chunk embeddings (`torch.max(dim=0)`) to extract the most malicious signal present anywhere in the document, compressing it back into a single **768-dimensional semantic vector**.
 
-#### Modality 3: Lexical URL & Routing Heuristics
-To eliminate Domain Blindness, the system evaluates the target endpoint's location and routing behavior:
-1. **Levenshtein Brand Distance:** Calculates the edit distance between the URL and Top 15 highly-phished enterprise brands, dynamically scaling suspicion for typosquatting (e.g., distance 1 or 2).
-2. **Suspicious Domain Flagging:** Flags the use of raw IP addresses and low-cost, heavily abused Top-Level Domains (TLDs like `.xyz`, `.top`).
-3. **Form Action Routing:** Scans `<form>` tags for suspicious data-drop endpoints (e.g., routing to a random `.php` script).
+#### Modality 3: Lexical, Routing, and DOM Depth Heuristics
+To eliminate Domain Blindness and detect sophisticated obfuscation attempts, several hard heuristics are extracted:
+1. **Maximum and Average DOM Depth:** Phishing kits utilizing automated templating or obfuscation often present heavily, recursively nested `<div>` and `<span>` tags. Quantifying the absolute depth and average depth of the HTML tree provides a strict mathematical proxy for code obfuscation complexity, perfectly complementing the CNN's spatial sequence analysis.
+2. **Levenshtein Brand Distance:** Calculates the edit distance between the URL and Top 15 highly-phished enterprise brands, dynamically scaling suspicion for typosquatting (e.g., distance 1 or 2).
+3. **Suspicious Domain Flagging:** Flags the use of raw IP addresses and low-cost, heavily abused Top-Level Domains (TLDs like `.xyz`, `.top`).
+4. **Form Action Routing:** Scans `<form>` tags for suspicious data-drop endpoints (e.g., routing to a random `.php` script).
 These heuristics produce a highly determinative scalar vector.
 
 ### 3.3. The Stacking Ensemble (XGBoost Meta-Classifier & Optuna Optimization)

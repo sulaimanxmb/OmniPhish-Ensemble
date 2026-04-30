@@ -30,8 +30,62 @@ def set_seed(seed=42):
 
 set_seed(42)
 
+def get_training_mode():
+    print("\n" + "="*50)
+    print("🚀 SELECT TRAINING MODE")
+    print("="*50)
+    print("[1] FAST MODE (Global CodeBERT PEFT, Feature-Leak accepted, ~15 mins)")
+    print("[2] SLOW MODE (Strict K-Fold CodeBERT Isolation, Zero-Leak, ~2 hours)")
+    print("="*50)
+    try:
+        # Fallback to fast if running non-interactively
+        choice = input("Enter 1 or 2 [Default: 1]: ").strip()
+    except EOFError:
+        choice = "1"
+    
+    return "slow" if choice == "2" else "fast"
+
+def train_codebert_lora(train_loader, codebert, device, epochs=1):
+    """Fine-tunes CodeBERT specifically for phishing vocabulary using LoRA."""
+    print("[*] Fine-tuning CodeBERT via LoRA...")
+    codebert.train()
+    
+    # Temporary classification head for fine-tuning the static feature extractor
+    temp_classifier = nn.Linear(768, 1).to(device)
+    
+    trainable_params = [p for p in codebert.parameters() if p.requires_grad] + list(temp_classifier.parameters())
+    if not trainable_params:
+        print("[!] No trainable parameters found. LoRA may be disabled. Skipping fine-tuning.")
+        return
+        
+    optimizer = optim.AdamW(trainable_params, lr=5e-4) # Slightly higher LR for fast LoRA convergence
+    criterion = nn.BCEWithLogitsLoss()
+    
+    for epoch in range(epochs):
+        epoch_loss = 0.0
+        for batch_dicts, labels in tqdm(train_loader, desc=f"CodeBERT LoRA Epoch {epoch+1}/{epochs}", leave=False):
+            labels = labels.to(device).unsqueeze(1).float()
+            optimizer.zero_grad()
+            
+            batch_embs = []
+            for item in batch_dicts:
+                # compute_embedding automatically enables gradients for the forward pass
+                emb = codebert.compute_embedding(item['codebert_text'])
+                batch_embs.append(emb)
+                
+            if len(batch_embs) == 0:
+                continue
+                
+            batch_embs_tensor = torch.stack(batch_embs)
+            logits = temp_classifier(batch_embs_tensor)
+            loss = criterion(logits, labels)
+            
+            loss.backward()
+            optimizer.step()
+            epoch_loss += loss.item()
+
 def global_pre_extract_codebert_heuristics(dataloader, codebert, device):
-    """Extracts CodeBERT and Heuristic features for the ENTIRE dataset ONCE to save time across folds."""
+    """Extracts CodeBERT and Heuristic features for the ENTIRE dataset ONCE (Fast Mode)."""
     codebert.eval()
     cb_feats, heuristics, labels_list = [], [], []
     
@@ -40,10 +94,32 @@ def global_pre_extract_codebert_heuristics(dataloader, codebert, device):
             for item, label in zip(batch_dicts, labels):
                 cb_emb = codebert.compute_embedding(item['codebert_text']).cpu().numpy().flatten()
                 cb_feats.append(cb_emb)
-                heuristics.append(item['heuristic'].cpu().numpy())
+                
+                # Squeeze the tensor if needed and convert to numpy
+                h_val = item['heuristic'].cpu().numpy()
+                heuristics.append(h_val)
                 labels_list.append(label.item())
                 
     return np.array(cb_feats), np.array(heuristics), np.array(labels_list)
+
+def extract_all_features(dataloader, cnn, codebert, device, desc):
+    """Extracts all 3 modalities dynamically per-fold (Slow Mode)."""
+    cnn.eval()
+    codebert.eval()
+    cnn_feats, cb_feats, heuristics, labels_list = [], [], [], []
+    
+    with torch.no_grad():
+        for batch_dicts, labels in tqdm(dataloader, desc=desc, leave=False):
+            for item, label in zip(batch_dicts, labels):
+                c_emb = cnn(item['cnn_input'].unsqueeze(0).to(device)).cpu().numpy().flatten()
+                cb_emb = codebert.compute_embedding(item['codebert_text']).cpu().numpy().flatten()
+                
+                cnn_feats.append(c_emb)
+                cb_feats.append(cb_emb)
+                heuristics.append(item['heuristic'].cpu().numpy())
+                labels_list.append(label.item())
+                
+    return np.array(cnn_feats), np.array(cb_feats), np.array(heuristics), np.array(labels_list)
 
 def train_cnn(train_loader, device, epochs=5):
     cnn = CNN1DEmbedding(embedding_dim=64, num_filters=128).to(device)
@@ -94,6 +170,8 @@ def train_model(batch_size=4, n_optuna_trials=10, n_splits=5):
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     print(f"Training on device: {device}")
     
+    mode = get_training_mode()
+    
     dirs = {'phishing': 'dataset/raw_html/phishing', 'benign': 'dataset/raw_html/benign'}
     dataset = PhishingDataset(dirs, undersample_benign=False)
     if len(dataset) == 0:
@@ -101,63 +179,96 @@ def train_model(batch_size=4, n_optuna_trials=10, n_splits=5):
         return
         
     full_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate)
-    codebert = CodeBERTEmbedding().to(device)
     
-    print("\n" + "="*50)
-    print("🚀 PHASE 1: GLOBAL PRE-EXTRACTION")
-    print("="*50)
-    # Extract CodeBERT and Heuristics once to prevent massive overhead inside folds
-    cb_feats, heuristics, all_labels = global_pre_extract_codebert_heuristics(full_loader, codebert, device)
-    
+    cb_feats, heuristics, all_labels = None, None, None
+    if mode == "fast":
+        print("\n" + "="*50)
+        print("🚀 PHASE 1: GLOBAL CODEBERT PEFT & PRE-EXTRACTION")
+        print("="*50)
+        codebert = CodeBERTEmbedding(use_lora=True).to(device)
+        train_codebert_lora(DataLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate), codebert, device, epochs=1)
+        cb_feats, heuristics, all_labels = global_pre_extract_codebert_heuristics(full_loader, codebert, device)
+    else:
+        # In slow mode, we only extract labels for StratifiedKFold split
+        all_labels = np.array(dataset.labels)
+
     skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
     fold_metrics = []
     
     print("\n" + "="*50)
-    print(f"🚀 PHASE 2: {n_splits}-FOLD CROSS VALIDATION & SMOTE")
+    print(f"🚀 PHASE 2: {n_splits}-FOLD CROSS VALIDATION & OPTUNA ({mode.upper()} MODE)")
     print("="*50)
     
     for fold, (train_idx, test_idx) in enumerate(skf.split(np.zeros(len(all_labels)), all_labels)):
         print(f"\n--- FOLD {fold+1}/{n_splits} ---")
         
-        train_subset = Subset(dataset, train_idx)
+        # PERFECT ISOLATION: Split Train Fold into Sub_Train (80%) and Opt_Val (20%) BEFORE CNN training
+        sub_train_idx, opt_val_idx = train_test_split(train_idx, test_size=0.2, random_state=42, stratify=all_labels[train_idx])
+        
+        sub_train_subset = Subset(dataset, sub_train_idx)
+        opt_val_subset = Subset(dataset, opt_val_idx)
         test_subset = Subset(dataset, test_idx)
         
-        train_loader_shuffled = DataLoader(train_subset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate)
-        train_loader_seq = DataLoader(train_subset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate)
-        test_loader_seq = DataLoader(test_subset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate)
+        sub_train_loader_shuffled = DataLoader(sub_train_subset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate)
         
-        # Train CNN on this specific fold to prevent data leakage
-        print("[*] Training Fold-Specific CNN...")
-        cnn = train_cnn(train_loader_shuffled, device, epochs=5)
+        # Train CNN strictly on Sub_Train
+        print("[*] Training CNN specifically on Sub_Train (Isolating Optuna Validation)...")
+        cnn = train_cnn(sub_train_loader_shuffled, device, epochs=5)
         
-        # Extract CNN Features
-        cnn_train = extract_cnn_features(train_loader_seq, cnn, device, "Extract CNN Train")
-        cnn_test = extract_cnn_features(test_loader_seq, cnn, device, "Extract CNN Test")
+        if mode == "slow":
+            print("[*] Training CodeBERT LoRA specifically on Sub_Train...")
+            codebert_fold = CodeBERTEmbedding(use_lora=True).to(device)
+            train_codebert_lora(sub_train_loader_shuffled, codebert_fold, device, epochs=1)
+            
+            cnn_sub_train, cb_sub_train, h_sub_train, y_sub_train = extract_all_features(DataLoader(sub_train_subset, batch_size=batch_size, collate_fn=custom_collate), cnn, codebert_fold, device, "Extract Sub-Train")
+            cnn_opt_val, cb_opt_val, h_opt_val, y_opt_val = extract_all_features(DataLoader(opt_val_subset, batch_size=batch_size, collate_fn=custom_collate), cnn, codebert_fold, device, "Extract Optuna-Val")
+            cnn_test, cb_test, h_test, y_test = extract_all_features(DataLoader(test_subset, batch_size=batch_size, collate_fn=custom_collate), cnn, codebert_fold, device, "Extract Test")
+            
+            X_sub_train = np.concatenate([cnn_sub_train, cb_sub_train, h_sub_train], axis=1)
+            X_opt_val = np.concatenate([cnn_opt_val, cb_opt_val, h_opt_val], axis=1)
+            X_test = np.concatenate([cnn_test, cb_test, h_test], axis=1)
+            
+        else:
+            # Fast Mode: Extract only CNN, grab CodeBERT from global cache
+            cnn_sub_train = extract_cnn_features(DataLoader(sub_train_subset, batch_size=batch_size, collate_fn=custom_collate), cnn, device, "Extract CNN Sub-Train")
+            cnn_opt_val = extract_cnn_features(DataLoader(opt_val_subset, batch_size=batch_size, collate_fn=custom_collate), cnn, device, "Extract CNN Optuna-Val")
+            cnn_test = extract_cnn_features(DataLoader(test_subset, batch_size=batch_size, collate_fn=custom_collate), cnn, device, "Extract CNN Test")
+            
+            # Heuristics array could be 1D or 2D, safely reshape
+            h_sub = heuristics[sub_train_idx]
+            h_opt = heuristics[opt_val_idx]
+            h_tst = heuristics[test_idx]
+            if len(h_sub.shape) == 1:
+                h_sub = h_sub.reshape(-1, 1)
+                h_opt = h_opt.reshape(-1, 1)
+                h_tst = h_tst.reshape(-1, 1)
+                
+            X_sub_train = np.concatenate([cnn_sub_train, cb_feats[sub_train_idx], h_sub], axis=1)
+            y_sub_train = all_labels[sub_train_idx]
+            
+            X_opt_val = np.concatenate([cnn_opt_val, cb_feats[opt_val_idx], h_opt], axis=1)
+            y_opt_val = all_labels[opt_val_idx]
+            
+            X_test = np.concatenate([cnn_test, cb_feats[test_idx], h_tst], axis=1)
+            y_test = all_labels[test_idx]
+            
+        # Re-combine Sub_Train and Opt_Val into Full Fold Train for final evaluation
+        X_train_full = np.concatenate([X_sub_train, X_opt_val], axis=0)
+        y_train_full = np.concatenate([y_sub_train, y_opt_val], axis=0)
         
-        # Assemble Final Hybrid Vectors
-        X_train = np.concatenate([cnn_train, cb_feats[train_idx], heuristics[train_idx].reshape(-1, 1)], axis=1)
-        y_train = all_labels[train_idx]
-        
-        X_test = np.concatenate([cnn_test, cb_feats[test_idx], heuristics[test_idx].reshape(-1, 1)], axis=1)
-        y_test = all_labels[test_idx]
-        
-        # Apply SMOTE to the full training fold later, BUT for Optuna, split FIRST to avoid internal leakage
-        print(f"[*] Raw Train Shape: {X_train.shape} | Benign: {np.sum(y_train==0)}, Phishing: {np.sum(y_train==1)}")
+        # Apply SMOTE strictly to Sub_Train for Optuna
+        print(f"[*] Raw Sub-Train Shape: {X_sub_train.shape} | Benign: {np.sum(y_sub_train==0)}, Phishing: {np.sum(y_sub_train==1)}")
         smote = SMOTE(random_state=42)
+        X_sub_train_smote, y_sub_train_smote = smote.fit_resample(X_sub_train, y_sub_train)
         
-        # Optuna Optimization Split
-        X_opt_train_raw, X_opt_val, y_opt_train_raw, y_opt_val = train_test_split(
-            X_train, y_train, test_size=0.2, random_state=42, stratify=y_train
-        )
-        
-        # Apply SMOTE strictly to Optuna's internal training set
-        X_opt_train_smote, y_opt_train_smote = smote.fit_resample(X_opt_train_raw, y_opt_train_raw)
-        
+        print("[*] Running Optuna Parameter Optimization...")
+        optuna.logging.set_verbosity(optuna.logging.WARNING) # Suppress massive output
         study = optuna.create_study(direction="maximize")
-        study.optimize(lambda trial: objective(trial, X_opt_train_smote, y_opt_train_smote, X_opt_val, y_opt_val), n_trials=n_optuna_trials)
+        study.optimize(lambda trial: objective(trial, X_sub_train_smote, y_sub_train_smote, X_opt_val, y_opt_val), n_trials=n_optuna_trials)
         
-        # Final Train and Test for this fold using the Best Params
         best = study.best_trial.params
+        print(f"[*] Optuna Best Trial F1: {study.best_trial.value:.4f}")
+        
         best_xgb_params = {
             'max_depth': best['xgb_max_depth'],
             'learning_rate': best['xgb_lr'],
@@ -165,14 +276,11 @@ def train_model(batch_size=4, n_optuna_trials=10, n_splits=5):
             'subsample': best['xgb_subsample']
         }
         
-        # Now apply SMOTE to the entire Train Fold for the final fold evaluation
-        X_train_smote, y_train_smote = smote.fit_resample(X_train, y_train)
-        print(f"[*] Final SMOTE Applied: {X_train_smote.shape} | Benign: {np.sum(y_train_smote==0)}, Phishing: {np.sum(y_train_smote==1)}")
-        
+        # Final Train on Full SMOTE Fold
+        X_train_smote, y_train_smote = smote.fit_resample(X_train_full, y_train_full)
         meta = MetaClassifier(use_logistic_regression=True, xgb_params=best_xgb_params)
         meta.train(X_train_smote, y_train_smote)
         
-        # Only save weights of the final fold (or could omit)
         if fold == n_splits - 1:
             os.makedirs("weights", exist_ok=True)
             meta.save("weights/meta_classifier.pkl")
