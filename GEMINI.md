@@ -11,7 +11,11 @@ This project implements a Stacking Ensemble Architecture to detect zero-day phis
 These are mathematically concatenated into an 898-dimensional vector, which is classified by an XGBoost Meta-Classifier (optimized via Optuna). To handle class imbalance without data leakage, SMOTE is applied strictly within the training fold of a 5-Fold Stratified Cross-Validation loop.
 
 ## 2. Key Rules & Constraints
-- **CRITICAL RULE**: For every single change or development made to this project, you MUST update `Project_Summary_For_Research_Paper.md` to reflect the changes and then commit the changes using `git`.
+- **CRITICAL RULE**: For every single change or development made to this project, you MUST:
+  1. Update `Project_Summary_For_Research_Paper.md` to reflect the changes.
+  2. Update `DECISIONS.md` ONLY if a meaningful new technical or architectural decision was made (follow its internal formatting rules; no fluff).
+  3. Update `CONTEXT.md` to accurately reflect the current state, impacted features, and architecture (follow its internal rules; overwrite/replace outdated info, do not stack logs).
+  4. Commit all changes using `git`.
 - **Hardware Profile**: The environment runs on macOS (Apple Silicon M-Series). Ensure all machine learning code (especially PyTorch and XGBoost) handles MPS (Metal Performance Shaders) properly and uses thread limitations (like `tree_method='hist'`) to prevent OpenMP segmentation faults.
 
 ## 3. Core Components
