@@ -27,3 +27,6 @@ weights/
 
 # Logs
 *.log
+
+# Documentation
+*.md
