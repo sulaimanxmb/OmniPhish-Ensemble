@@ -9,7 +9,7 @@ from classifier import MetaClassifier
 import os
 import random
 from tqdm import tqdm
-from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, accuracy_score
+from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, accuracy_score, roc_auc_score, matthews_corrcoef
 import numpy as np
 import optuna
 from sklearn.model_selection import StratifiedKFold, train_test_split
@@ -83,6 +83,9 @@ def train_codebert_lora(train_loader, codebert, device, epochs=1):
             loss.backward()
             optimizer.step()
             epoch_loss += loss.item()
+            
+            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                torch.mps.empty_cache()
 
 def global_pre_extract_codebert_heuristics(dataloader, codebert, device):
     """Extracts CodeBERT and Heuristic features for the ENTIRE dataset ONCE (Fast Mode)."""
@@ -170,6 +173,7 @@ def train_model(batch_size=4, n_optuna_trials=10, n_splits=5):
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     print(f"Training on device: {device}")
     
+    import csv
     mode = get_training_mode()
     
     dirs = {'phishing': 'dataset/raw_html/phishing', 'benign': 'dataset/raw_html/benign'}
@@ -178,19 +182,40 @@ def train_model(batch_size=4, n_optuna_trials=10, n_splits=5):
         print("Dataset is empty.")
         return
         
-    full_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate)
+    # --- PHASE 0: ZERO-DAY VAULT SPLIT ---
+    all_indices = np.arange(len(dataset))
+    all_labels = np.array(dataset.labels)
     
-    cb_feats, heuristics, all_labels = None, None, None
+    print("\n" + "="*50)
+    print("🔒 PHASE 0: ISOLATING ZERO-DAY VAULT (10%)")
+    print("="*50)
+    
+    train_val_idx, vault_idx = train_test_split(all_indices, test_size=0.1, stratify=all_labels, random_state=42)
+    os.makedirs("weights", exist_ok=True)
+    np.save("weights/vault_indices.npy", vault_idx)
+    print(f"[*] Locked {len(vault_idx)} samples into the Zero-Day Vault.")
+    print(f"[*] Remaining {len(train_val_idx)} samples will be used for K-Fold CV.")
+    
+    # We create a Subset of the dataset that excludes the vault
+    train_val_dataset = Subset(dataset, train_val_idx)
+    train_val_labels = all_labels[train_val_idx]
+    
+    # For global fast extraction, we only want to extract on the train_val dataset
+    train_val_loader = DataLoader(train_val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate)
+    
+    cb_feats, heuristics = None, None
     if mode == "fast":
         print("\n" + "="*50)
         print("🚀 PHASE 1: GLOBAL CODEBERT PEFT & PRE-EXTRACTION")
         print("="*50)
         codebert = CodeBERTEmbedding(use_lora=True).to(device)
-        train_codebert_lora(DataLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate), codebert, device, epochs=1)
-        cb_feats, heuristics, all_labels = global_pre_extract_codebert_heuristics(full_loader, codebert, device)
-    else:
-        # In slow mode, we only extract labels for StratifiedKFold split
-        all_labels = np.array(dataset.labels)
+        train_codebert_lora(DataLoader(train_val_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate), codebert, device, epochs=1)
+        cb_feats, heuristics, _ = global_pre_extract_codebert_heuristics(train_val_loader, codebert, device)
+        
+    # Prepare CSV for Variance logging
+    with open("kfold_variance_logs.csv", "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Fold", "Train_F1", "Train_Precision", "Val_F1", "Val_Precision"])
 
     skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
     fold_metrics = []
@@ -199,15 +224,15 @@ def train_model(batch_size=4, n_optuna_trials=10, n_splits=5):
     print(f"🚀 PHASE 2: {n_splits}-FOLD CROSS VALIDATION & OPTUNA ({mode.upper()} MODE)")
     print("="*50)
     
-    for fold, (train_idx, test_idx) in enumerate(skf.split(np.zeros(len(all_labels)), all_labels)):
+    for fold, (train_idx, test_idx) in enumerate(skf.split(np.zeros(len(train_val_labels)), train_val_labels)):
         print(f"\n--- FOLD {fold+1}/{n_splits} ---")
         
         # PERFECT ISOLATION: Split Train Fold into Sub_Train (80%) and Opt_Val (20%) BEFORE CNN training
-        sub_train_idx, opt_val_idx = train_test_split(train_idx, test_size=0.2, random_state=42, stratify=all_labels[train_idx])
+        sub_train_idx, opt_val_idx = train_test_split(train_idx, test_size=0.2, random_state=42, stratify=train_val_labels[train_idx])
         
-        sub_train_subset = Subset(dataset, sub_train_idx)
-        opt_val_subset = Subset(dataset, opt_val_idx)
-        test_subset = Subset(dataset, test_idx)
+        sub_train_subset = Subset(train_val_dataset, sub_train_idx)
+        opt_val_subset = Subset(train_val_dataset, opt_val_idx)
+        test_subset = Subset(train_val_dataset, test_idx)
         
         sub_train_loader_shuffled = DataLoader(sub_train_subset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate)
         
@@ -244,13 +269,13 @@ def train_model(batch_size=4, n_optuna_trials=10, n_splits=5):
                 h_tst = h_tst.reshape(-1, 1)
                 
             X_sub_train = np.concatenate([cnn_sub_train, cb_feats[sub_train_idx], h_sub], axis=1)
-            y_sub_train = all_labels[sub_train_idx]
+            y_sub_train = train_val_labels[sub_train_idx]
             
             X_opt_val = np.concatenate([cnn_opt_val, cb_feats[opt_val_idx], h_opt], axis=1)
-            y_opt_val = all_labels[opt_val_idx]
+            y_opt_val = train_val_labels[opt_val_idx]
             
             X_test = np.concatenate([cnn_test, cb_feats[test_idx], h_tst], axis=1)
-            y_test = all_labels[test_idx]
+            y_test = train_val_labels[test_idx]
             
         # Re-combine Sub_Train and Opt_Val into Full Fold Train for final evaluation
         X_train_full = np.concatenate([X_sub_train, X_opt_val], axis=0)
@@ -285,34 +310,58 @@ def train_model(batch_size=4, n_optuna_trials=10, n_splits=5):
             os.makedirs("weights", exist_ok=True)
             meta.save("weights/meta_classifier.pkl")
             torch.save(cnn.state_dict(), "weights/cnn_trained.pt")
-            
-        preds = [meta.predict(x) for x in X_test]
+            if mode == "slow":
+                torch.save(codebert_fold.state_dict(), "weights/codebert_trained.pt")
+            else:
+                torch.save(codebert.state_dict(), "weights/codebert_trained.pt")
+                
+        # Evaluate on Validation (Test Fold)
+        preds_val = [meta.predict(x) for x in X_test]
+        acc_val = accuracy_score(y_test, preds_val)
+        prec_val = precision_score(y_test, preds_val, zero_division=0)
+        rec_val = recall_score(y_test, preds_val, zero_division=0)
+        f1_val = f1_score(y_test, preds_val, zero_division=0)
         
-        acc = accuracy_score(y_test, preds)
-        prec = precision_score(y_test, preds, zero_division=0)
-        rec = recall_score(y_test, preds, zero_division=0)
-        f1 = f1_score(y_test, preds, zero_division=0)
+        auc_val = roc_auc_score(y_test, preds_val)
+        mcc_val = matthews_corrcoef(y_test, preds_val)
+        cm_val = confusion_matrix(y_test, preds_val)
+        tn, fp, fn, tp = cm_val.ravel()
+        fpr_val = fp / (fp + tn) if (fp + tn) > 0 else 0.0
         
-        print(f"[+] Fold {fold+1} Metrics: F1: {f1*100:.2f}% | Prec: {prec*100:.2f}% | Rec: {rec*100:.2f}% | Acc: {acc*100:.2f}%")
-        fold_metrics.append((f1, prec, rec, acc))
+        # Evaluate on Train Fold (Method 2 Logging)
+        preds_train = [meta.predict(x) for x in X_train_full] # Using full train (un-smoted) for realistic training precision
+        prec_train = precision_score(y_train_full, preds_train, zero_division=0)
+        f1_train = f1_score(y_train_full, preds_train, zero_division=0)
+        
+        with open("kfold_variance_logs.csv", "a", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([fold+1, f"{f1_train:.4f}", f"{prec_train:.4f}", f"{f1_val:.4f}", f"{prec_val:.4f}"])
+        
+        print(f"[+] Fold {fold+1} Metrics: F1: {f1_val*100:.2f}% | Prec: {prec_val*100:.2f}% | Rec: {rec_val*100:.2f}% | Acc: {acc_val*100:.2f}% | AUC: {auc_val:.4f} | MCC: {mcc_val:.4f} | FPR: {fpr_val*100:.2f}%")
+        fold_metrics.append((f1_val, prec_val, rec_val, acc_val, auc_val, mcc_val, fpr_val))
         
     print("\n" + "="*50)
     print("🚀 FINAL 5-FOLD CROSS VALIDATION RESULTS")
     print("="*50)
-    f1s, precs, recs, accs = zip(*fold_metrics)
+    f1s, precs, recs, accs, aucs, mccs, fprs = zip(*fold_metrics)
     
     print(f"Average Accuracy:  {np.mean(accs)*100:.2f}% ± {np.std(accs)*100:.2f}%")
     print(f"Average Precision: {np.mean(precs)*100:.2f}% ± {np.std(precs)*100:.2f}%")
     print(f"Average Recall:    {np.mean(recs)*100:.2f}% ± {np.std(recs)*100:.2f}%")
     print(f"Average F1-Score:  {np.mean(f1s)*100:.2f}% ± {np.std(f1s)*100:.2f}%")
+    print(f"Average ROC-AUC:   {np.mean(aucs):.4f} ± {np.std(aucs):.4f}")
+    print(f"Average MCC:       {np.mean(mccs):.4f} ± {np.std(mccs):.4f}")
+    print(f"Average FPR:       {np.mean(fprs)*100:.2f}% ± {np.std(fprs)*100:.2f}%")
 
 if __name__ == "__main__":
     start_time = time.time()
-    train_model(batch_size=4, n_optuna_trials=10, n_splits=5)
+    train_model(batch_size=1, n_optuna_trials=10, n_splits=5)
     end_time = time.time()
     
     total_time = end_time - start_time
     mins, secs = divmod(total_time, 60)
     print("\n" + "="*50)
     print(f"⏱️ TOTAL PIPELINE EXECUTION TIME: {int(mins)} minutes and {int(secs)} seconds")
+    print("\n[!] Training complete!")
+    print("[!] Run 'python Check_for_overfitting.py' to evaluate the zero-day vault and check for overfitting.")
     print("="*50)

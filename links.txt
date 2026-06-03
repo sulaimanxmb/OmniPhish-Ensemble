@@ -1,5 +1,0 @@
-https://accounts.google.com/
-https://login.microsoftonline.com/
-https://github.com/login
-https://www.linkedin.com/login
-https://twitter.com/i/flow/login
