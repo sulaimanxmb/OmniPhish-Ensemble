@@ -33,5 +33,9 @@ top-1m.txt
 *.pdf
 *.tex
 *.png
+*.html
+*_temp.py
+baseline_predict.py
+doit.py
 Likely Trash/
 converted_md_files/
