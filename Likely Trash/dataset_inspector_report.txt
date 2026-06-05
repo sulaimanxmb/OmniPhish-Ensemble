@@ -1,0 +1,92 @@
+--- FAULTY HTML INSPECTION REPORT ---
+Total Checked: 4664
+Total Faulty: 29
+
+FILE: dataset/raw_html/phishing/xfvhg-pmsm-npe5_p-mv4ac1tf_workers_dev_lp_oDB2ZXrYaHc.html
+  - Irrelevant Target: Contains exactly zero <input> fields. Cannot be a credential harvester / login page.
+
+FILE: dataset/raw_html/phishing/dl103aksjdb2-slgnin-primember_wilertvision_com_sahklrjqs_asvlaks_mobile_index_php.html
+  - Exact Template Clone: This file is a 100% mathematical duplicate of another dataset file.
+
+FILE: dataset/raw_html/phishing/paypal_cardpaysecurity_org_login_TfkxSCSMT_48_QyAbrl9iI9HgJWLIoW24VUE_0AQ__8SFlBSFlUZ1RXX1FW_KJken0OKG_PsaCkVuioA_HBsebTjbUf6_.html
+  - Exact Template Clone: This file is a 100% mathematical duplicate of another dataset file.
+
+FILE: dataset/raw_html/phishing/e7-ledger-livelogin-battery-support_vercel_app_.html
+  - Irrelevant Target: Contains exactly zero <input> fields. Cannot be a credential harvester / login page.
+
+FILE: dataset/raw_html/phishing/metamaskwallet_to_.html
+  - Irrelevant Target: Contains exactly zero <input> fields. Cannot be a credential harvester / login page.
+
+FILE: dataset/raw_html/phishing/qyfkh_leasdes_com_ifaopjxrknbfh.html
+  - Dead Host Detected: Page contains domain suspension or 404 message ('404 not found')
+  - Irrelevant Target: Contains exactly zero <input> fields. Cannot be a credential harvester / login page.
+
+FILE: dataset/raw_html/phishing/linn-eska_de_tuxk1yh_zgil1jk_ordhig1_jloda_0utFix_Mr_Khan_index2_php.html
+  - Exact Template Clone: This file is a 100% mathematical duplicate of another dataset file.
+
+FILE: dataset/raw_html/phishing/scale_wasmer_app_.html
+  - Extremely large file size (> 3MB). Likely bloated Javascript payload that will crash PyTorch RAM.
+
+FILE: dataset/raw_html/phishing/www_canvasphotography_id_hom_kbk_login_php.html
+  - Exact Template Clone: This file is a 100% mathematical duplicate of another dataset file.
+
+FILE: dataset/raw_html/phishing/ecortbabylon_site_duo_test.html
+  - Irrelevant Target: Contains exactly zero <input> fields. Cannot be a credential harvester / login page.
+
+FILE: dataset/raw_html/phishing/linn-eska_de_tuxk1yh_zgil1jk_ordhig1_jloda_0utFix_Mr_Khan_.html
+  - Exact Template Clone: This file is a 100% mathematical duplicate of another dataset file.
+
+FILE: dataset/raw_html/phishing/samreans_github_io_Here-attacthed_Purchase_20Order.html
+  - Exact Template Clone: This file is a 100% mathematical duplicate of another dataset file.
+
+FILE: dataset/raw_html/phishing/account_remote-otp_com_recoveryidprofile.html
+  - Exact Template Clone: This file is a 100% mathematical duplicate of another dataset file.
+
+FILE: dataset/raw_html/phishing/n53i3_r_ag_d_sendibm3_com_mk_cl_f_sh_1f8JIKXwHGYox0Goyu54KhjL6X_4Cgt5f8Y41bq.html
+  - Irrelevant Target: Contains exactly zero <input> fields. Cannot be a credential harvester / login page.
+
+FILE: dataset/raw_html/phishing/samyakdutta835_github_io_netflix-clone_.html
+  - Exact Template Clone: This file is a 100% mathematical duplicate of another dataset file.
+
+FILE: dataset/raw_html/phishing/pratik-ghrcemp_github_io_amazon-clone-project_.html
+  - Exact Template Clone: This file is a 100% mathematical duplicate of another dataset file.
+
+FILE: dataset/raw_html/phishing/daltonint_com__wildcard__verif_daltonint_com.html
+  - Exact Template Clone: This file is a 100% mathematical duplicate of another dataset file.
+
+FILE: dataset/raw_html/phishing/ecortbabylon_site_google-meet_test.html
+  - Irrelevant Target: Contains exactly zero <input> fields. Cannot be a credential harvester / login page.
+
+FILE: dataset/raw_html/phishing/gemini_xiaogpt1_eu_org_.html
+  - Exact Template Clone: This file is a 100% mathematical duplicate of another dataset file.
+
+FILE: dataset/raw_html/phishing/rtranstics_co_za_assets_old_redirect_htm.html
+  - Irrelevant Target: Contains exactly zero <input> fields. Cannot be a credential harvester / login page.
+
+FILE: dataset/raw_html/phishing/s4w_in_https_-r-robloxt-cv-users-com-1873596071-profile.html
+  - Exact Template Clone: This file is a 100% mathematical duplicate of another dataset file.
+
+FILE: dataset/raw_html/phishing/battery-support-ledger-livelogin-e7_vercel_app_.html
+  - Irrelevant Target: Contains exactly zero <input> fields. Cannot be a credential harvester / login page.
+
+FILE: dataset/raw_html/phishing/dennisriani2-design_github_io_onedrive.html
+  - Exact Template Clone: This file is a 100% mathematical duplicate of another dataset file.
+
+FILE: dataset/raw_html/phishing/vedrajmeghwanshi1996-byte_github_io_instagram-clone.html
+  - Extremely small file size (< 800 Bytes). Likely an empty page or fatal network drop.
+
+FILE: dataset/raw_html/phishing/hilfe-meine-dkb_de_ignorelist_com_Login_DE_Meine_dkb_login_php.html
+  - Exact Template Clone: This file is a 100% mathematical duplicate of another dataset file.
+
+FILE: dataset/raw_html/phishing/meta-acorn_pages_dev_appeals_submit-appeal-form_return_.html
+  - Irrelevant Target: Contains exactly zero <input> fields. Cannot be a credential harvester / login page.
+
+FILE: dataset/raw_html/phishing/webmail_secureinvestingonline_com_secure_training_6422c2_8c5781c2-7b1e-4035-b1d7-990e269e5380.html
+  - Exact Template Clone: This file is a 100% mathematical duplicate of another dataset file.
+
+FILE: dataset/raw_html/phishing/bafkreih6ziryyz37frw2uf4bikvjrio7dmspmbqbhau6sgcs5cjrxdketa_ipfs_dweb_link_.html
+  - Exact Template Clone: This file is a 100% mathematical duplicate of another dataset file.
+
+FILE: dataset/raw_html/phishing/ecortbabylon_site_meet_asda.html
+  - Irrelevant Target: Contains exactly zero <input> fields. Cannot be a credential harvester / login page.
+

@@ -5,6 +5,7 @@ from playwright.async_api import async_playwright
 from urllib.parse import urlparse
 
 OUTPUT_DIR_BENIGN = "dataset/raw_html/benign"
+LOG_FILE = "dataset/.scraped_log.txt"
 os.makedirs(OUTPUT_DIR_BENIGN, exist_ok=True)
 
 # ANSI colors for terminal logging
@@ -34,20 +35,34 @@ async def extract_full_html(page):
     return html
 
 async def main():
-    manual_benign = []
-    if os.path.exists("benign_dataset.txt"):
-        with open("benign_dataset.txt", "r", encoding="utf-8") as f:
+    seen_urls = set()
+    if os.path.exists(LOG_FILE):
+        with open(LOG_FILE, "r", encoding="utf-8") as f:
             for line in f:
-                if line.strip():
-                    manual_benign.append(line.strip())
+                seen_urls.add(line.strip())
+
+    manual_benign = []
+    global_lines = []
+    if os.path.exists("top-1m.txt"):
+        with open("top-1m.txt", "r", encoding="utf-8") as f:
+            global_lines = f.readlines()
+            for line_raw in global_lines:
+                line = line_raw.strip()
+                if line:
+                    parts = line.split(',')
+                    if len(parts) == 2:
+                        domain = parts[1].strip()
+                        url = f"https://{domain}"
+                        if url not in seen_urls:
+                            manual_benign.append((line_raw, url))
     else:
-        print("Error: benign_dataset.txt missing!")
+        print("Error: top-1m.txt missing!")
         return
 
     targets_benign = []
-    for u in manual_benign:
+    for line_raw, u in manual_benign:
         if not os.path.exists(os.path.join(OUTPUT_DIR_BENIGN, sanitize_filename(u))):
-            targets_benign.append(u)
+            targets_benign.append((line_raw, u))
     
     if len(targets_benign) == 0:
         print("No new unique Benign URLs found! All URLs in text file have already been successfully saved.")
@@ -65,7 +80,7 @@ async def main():
     print("="*70 + "\n")
     
     async with async_playwright() as p:
-        for index, url in enumerate(targets_benign):
+        for index, (line_raw, url) in enumerate(targets_benign):
             print(f"{CYAN}[{index+1}/{len(targets_benign)}] Loading: {url}{RESET} (Waiting for you...)")
             
             browser = await p.firefox.launch(
@@ -98,7 +113,7 @@ async def main():
                     const btn = document.createElement('button');
                     btn.innerHTML = '📥 SAVE LOGIN HTML & NEXT';
                     btn.style.position = 'fixed';
-                    btn.style.top = '20px';
+                    btn.style.bottom = '20px';
                     btn.style.right = '20px';
                     btn.style.zIndex = '2147483647'; // Max z-index to stay on top
                     btn.style.padding = '15px 20px';
@@ -171,6 +186,16 @@ async def main():
                     # Exception occurs if the user closes the window EXACTLY during the heuristic check
                     print(f"{RED}[SKIPPED] Browser was closed. Moving to next URL.{RESET}\n")
                     break
+                    
+            # Record that we have processed this URL (whether saved or skipped)
+            with open(LOG_FILE, "a", encoding="utf-8") as log:
+                log.write(url + "\n")
+                
+            # Physically shrink the top-1m.txt file
+            if line_raw in global_lines:
+                global_lines.remove(line_raw)
+                with open("top-1m.txt", "w", encoding="utf-8") as f:
+                    f.writelines(global_lines)
                     
             try:
                 await browser.close()
