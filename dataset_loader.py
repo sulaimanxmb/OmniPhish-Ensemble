@@ -52,11 +52,7 @@ class PhishingDataset(Dataset):
             
             files = [f for f in os.listdir(folder_path) if f.endswith(".html")]
             
-            # Cap phishing samples to 700 maximum as requested
-            if class_label == 'phishing' and len(files) > 700:
-                print(f"\n[PyTorch Pre-Loader] Capping Phishing dataset from {len(files)} down to the FIRST 700 samples for consistent stats.")
-                files.sort()  # Sort alphabetically to guarantee the exact same 700 files are chosen every time
-                files = files[:700]
+            # No artificial capping applied; utilizing the full Phishing dataset.
                 
             for filename in files:
                 filepath = os.path.join(folder_path, filename)
