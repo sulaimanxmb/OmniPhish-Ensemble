@@ -1,4 +1,4 @@
-# ZeroDay-Phishing-Ensemble
+# OmniPhish: Tri-Modal Stacking Ensemble
 
 **Status:** Work in Progress 🚧
 

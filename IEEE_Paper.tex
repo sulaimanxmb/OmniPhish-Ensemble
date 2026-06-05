@@ -15,8 +15,9 @@
 
 \begin{document}
 
-\title{Eliminating Domain Blindness in Zero-Day Phishing Detection via Structural, Semantic, and Lexical Fusion\\
-\thanks{Identify applicable funding agency here. If none, delete this.}
+\title{OmniPhish: A Tri-Modal Stacking Ensemble for Zero-Day Phishing Detection\\
+% {\footnotesize \textsuperscript{*}Note: Sub-titles are not captured in Xplore and
+% should not be used}
 }
 
 \author{
@@ -42,7 +43,7 @@ nisarnuman7@gmail.com}
 \maketitle
 
 \begin{abstract}
-Traditional phishing detection mechanisms depend heavily on static blacklists, URL heuristics, and superficial visual matching, which are easily evaded by modern, high-fidelity phishing kits that employ dynamic Single Page Application (SPA) frameworks and typosquatting. This paper presents a novel Deep Learning Stacking Ensemble that mitigates ``Domain Blindness'' by fusing three distinct modalities: Context-Aware DOM Structural Sequence Analysis (CNN1D), Isolated JavaScript Semantic Intent Analysis (CodeBERT via Learned Attention Pooling), and DOM Behavioral Heuristics. By bypassing visual rendering and operating directly on raw DOM routing, our system generates an 899-dimensional hybrid vector classified by an Optuna-optimized XGBoost Meta-Classifier. Furthermore, to address severe memory bottlenecks on constrained edge-computing architectures, we introduce a decoupled Zero-Day Vault evaluation pipeline. Evaluated on an expanded, highly curated dataset of over 5,800 post-rendered DOM samples utilizing Synthetic Minority Over-sampling (SMOTE), our proposed ensemble achieves an F1-score of 99.35\% on isolated zero-day testing, demonstrating robust generalization and significantly outperforming traditional machine learning baselines.
+Traditional phishing detection mechanisms depend heavily on static blacklists, URL heuristics, and superficial visual matching, which are easily evaded by modern, high-fidelity phishing kits that employ dynamic Single Page Application (SPA) frameworks and typosquatting. This paper presents OmniPhish, a novel Deep Learning Stacking Ensemble that mitigates ``Domain Blindness'' by fusing three distinct modalities: Context-Aware DOM Structural Sequence Analysis (CNN1D), Isolated JavaScript Semantic Intent Analysis (CodeBERT via Learned Attention Pooling), and DOM Behavioral Heuristics. By bypassing visual rendering and operating directly on raw DOM routing, our system generates an 899-dimensional hybrid vector classified by an Optuna-optimized XGBoost Meta-Classifier. Furthermore, to address severe memory bottlenecks on constrained edge-computing architectures, we introduce a decoupled Zero-Day Vault evaluation pipeline. Evaluated on an expanded, highly curated dataset of over 5,800 post-rendered DOM samples utilizing Synthetic Minority Over-sampling (SMOTE), the OmniPhish ensemble achieves an F1-score of 99.35\% on isolated zero-day testing, demonstrating robust generalization and significantly outperforming traditional machine learning baselines.
 \end{abstract}
 
 \begin{IEEEkeywords}
