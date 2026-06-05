@@ -10,7 +10,8 @@ from omniphish.cnn_model import CNN1DEmbedding, text_to_tensor
 from omniphish.transformer_model import CodeBERTEmbedding
 from omniphish.classifier import MetaClassifier
 from phish_scraper import check_login_heuristics
-from baseline_features import is_suspicious_action
+from omniphish.url_heuristics import is_suspicious_action
+from omniphish.dataset_loader import get_dom_depth_stats
 from bs4 import BeautifulSoup
 
 async def fetch_html(url):
@@ -52,7 +53,8 @@ def predict(url):
             suspicious_form_action = 1
             break
             
-    heuristic_val = np.array([suspicious_form_action], dtype=np.float32)
+    max_depth, avg_depth = get_dom_depth_stats(soup)
+    heuristic_val = np.array([suspicious_form_action, max_depth, avg_depth], dtype=np.float32)
 
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     
