@@ -31,5 +31,7 @@ weights/
 # Project specific ignores
 top-1m.txt
 *.pdf
+*.tex
+*.png
 Likely Trash/
 converted_md_files/
