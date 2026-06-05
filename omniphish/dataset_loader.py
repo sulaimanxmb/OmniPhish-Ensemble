@@ -3,9 +3,9 @@ import torch
 import numpy as np
 from bs4 import BeautifulSoup
 from torch.utils.data import Dataset, DataLoader
-from html_parser import clean_html, extract_codebert_tags
-from cnn_model import text_to_tensor
-from baseline_features import is_suspicious_action
+from .html_parser import clean_html, extract_codebert_tags
+from .cnn_model import text_to_tensor
+from .url_heuristics import is_suspicious_action
 
 def get_dom_depth_stats(soup):
     """

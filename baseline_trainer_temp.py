@@ -7,67 +7,9 @@ from tqdm import tqdm
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, roc_auc_score, matthews_corrcoef
 
-import re
-from bs4 import BeautifulSoup
-from omniphish.dataset_loader import PhishingDataset
+from dataset_loader_temp import PhishingDatasetTemp as PhishingDataset
+from baseline_features import extract_manual_features
 import random
-
-def is_suspicious_action(action_url):
-    """
-    Evaluates if a form action URL matches known phishing drop patterns.
-    """
-    if not action_url:
-        return 1 # Empty action relies on hidden JS (suspicious)
-        
-    action = action_url.lower().strip()
-    if action in ['#', 'javascript:void(0)', 'javascript:;']:
-        return 1
-        
-    # Raw IP addresses
-    if re.search(r'https?://[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', action):
-        return 1
-        
-    # Common phishing drop scripts
-    if re.search(r'(login|post|action|send|mail|submit)\.php$', action):
-        return 1
-        
-    # Known free hosting or worker tunnels
-    if re.search(r'(ngrok\.io|000webhost|herokuapp|firebaseapp|workers\.dev)', action):
-        return 1
-        
-    return 0
-
-def extract_manual_features(html_content):
-    """
-    Extracts traditional, manual heuristic features from raw HTML
-    for the baseline Random Forest model.
-    Returns a 1D numpy array of exactly 8 features.
-    """
-    # Fallback for empty/failed fetches
-    if not html_content or not isinstance(html_content, str):
-        return np.zeros(8)
-
-    soup = BeautifulSoup(html_content, 'html.parser')
-    
-    html_length = len(html_content)
-    num_scripts = len(soup.find_all('script'))
-    num_iframes = len(soup.find_all('iframe'))
-    num_forms = len(soup.find_all('form'))
-    has_password = 1 if soup.find('input', type=lambda t: t and t.lower() == 'password') else 0
-    num_links = len(soup.find_all('a'))
-    num_hidden_inputs = len(soup.find_all('input', type=lambda t: t and t.lower() == 'hidden'))
-    
-    suspicious_form_action = 0
-    for form in soup.find_all('form'):
-        if is_suspicious_action(form.get('action', '')):
-            suspicious_form_action = 1
-            break
-            
-    features = [
-        html_length, num_scripts, num_iframes, num_forms,
-        has_password, num_links, num_hidden_inputs, suspicious_form_action
-    ]
-    return np.array(features, dtype=np.float32)
 
 def set_seed(seed=42):
     """Locks all random seeds for exact reproducibility."""
@@ -161,8 +103,7 @@ def train_baseline():
         n_estimators=100, 
         max_depth=10, 
         random_state=42, 
-        n_jobs=-1,
-        class_weight='balanced'
+        n_jobs=-1
     )
     
     rf_model.fit(X_train, y_train)

@@ -7,9 +7,9 @@ from tqdm import tqdm
 from imblearn.over_sampling import SMOTE
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, roc_auc_score, matthews_corrcoef
 
-from dataset_loader import PhishingDataset, custom_collate
-from cnn_model import CNN1DEmbedding
-from transformer_model import CodeBERTEmbedding
+from omniphish.dataset_loader import PhishingDataset, custom_collate
+from omniphish.cnn_model import CNN1DEmbedding
+from omniphish.transformer_model import CodeBERTEmbedding
 
 def extract_global_features():
     print("[*] Loading trained Neural Networks...")

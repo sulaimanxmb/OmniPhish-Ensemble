@@ -5,10 +5,10 @@ import torch
 import numpy as np
 from playwright.async_api import async_playwright
 
-from html_parser import clean_html, extract_codebert_tags
-from cnn_model import CNN1DEmbedding, text_to_tensor
-from transformer_model import CodeBERTEmbedding
-from classifier import MetaClassifier
+from omniphish.html_parser import clean_html, extract_codebert_tags
+from omniphish.cnn_model import CNN1DEmbedding, text_to_tensor
+from omniphish.transformer_model import CodeBERTEmbedding
+from omniphish.classifier import MetaClassifier
 from phish_scraper import check_login_heuristics
 from baseline_features import is_suspicious_action
 from bs4 import BeautifulSoup

@@ -6,7 +6,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, roc_auc_score, matthews_corrcoef
 
-from omniphish.dataset_loader import PhishingDataset
+from dataset_loader_temp import PhishingDatasetTemp as PhishingDataset
 import random
 import torch
 

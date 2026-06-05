@@ -7,3 +7,8 @@ scikit-learn
 pandas
 xgboost
 imbalanced-learn
+optuna
+tqdm
+matplotlib
+seaborn
+numpy

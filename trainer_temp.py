@@ -2,10 +2,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Subset
-from omniphish.dataset_loader import PhishingDataset, custom_collate
-from omniphish.cnn_model import CNN1DEmbedding
-from omniphish.transformer_model import CodeBERTEmbedding
-from omniphish.classifier import MetaClassifier
+from dataset_loader_temp import PhishingDatasetTemp as PhishingDataset
+from dataset_loader import custom_collate
+from cnn_model import CNN1DEmbedding
+from transformer_model import CodeBERTEmbedding
+from classifier import MetaClassifier
 import os
 import random
 from tqdm import tqdm

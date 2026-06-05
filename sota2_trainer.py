@@ -8,7 +8,7 @@ from tqdm import tqdm
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, roc_auc_score, matthews_corrcoef
 import random
 
-from dataset_loader import PhishingDataset
+from omniphish.dataset_loader import PhishingDataset
 
 def set_seed(seed=42):
     """Locks all random seeds for exact reproducibility."""
