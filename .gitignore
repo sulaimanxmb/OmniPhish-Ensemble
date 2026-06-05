@@ -27,3 +27,9 @@ weights/
 
 # Logs
 *.log
+
+# Project specific ignores
+top-1m.txt
+*.pdf
+Likely Trash/
+converted_md_files/
