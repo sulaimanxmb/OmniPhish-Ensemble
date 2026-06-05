@@ -9,7 +9,7 @@ from omniphish.html_parser import clean_html, extract_codebert_tags
 from omniphish.cnn_model import CNN1DEmbedding, text_to_tensor
 from omniphish.transformer_model import CodeBERTEmbedding
 from omniphish.classifier import MetaClassifier
-from phish_scraper import check_login_heuristics
+from dataset_generator.phish_scraper import check_login_heuristics
 from omniphish.url_heuristics import is_suspicious_action
 from omniphish.dataset_loader import get_dom_depth_stats
 from bs4 import BeautifulSoup

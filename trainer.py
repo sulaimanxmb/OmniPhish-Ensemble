@@ -213,7 +213,8 @@ def train_model(batch_size=4, n_optuna_trials=10, n_splits=5):
         cb_feats, heuristics, _ = global_pre_extract_codebert_heuristics(train_val_loader, codebert, device)
         
     # Prepare CSV for Variance logging
-    with open("kfold_variance_logs.csv", "w", newline="") as f:
+    os.makedirs("metrics", exist_ok=True)
+    with open("metrics/kfold_variance_logs.csv", "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["Fold", "Train_F1", "Train_Precision", "Val_F1", "Val_Precision"])
 
@@ -333,7 +334,7 @@ def train_model(batch_size=4, n_optuna_trials=10, n_splits=5):
         prec_train = precision_score(y_train_full, preds_train, zero_division=0)
         f1_train = f1_score(y_train_full, preds_train, zero_division=0)
         
-        with open("kfold_variance_logs.csv", "a", newline="") as f:
+        with open("metrics/kfold_variance_logs.csv", "a", newline="") as f:
             writer = csv.writer(f)
             writer.writerow([fold+1, f"{f1_train:.4f}", f"{prec_train:.4f}", f"{f1_val:.4f}", f"{prec_val:.4f}"])
         

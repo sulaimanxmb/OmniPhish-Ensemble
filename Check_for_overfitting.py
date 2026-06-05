@@ -18,11 +18,11 @@ def analyze_kfold_variance():
     print("📊 PART 1: K-FOLD VARIANCE ANALYSIS (METHOD 2)")
     print("="*60)
     
-    if not os.path.exists("kfold_variance_logs.csv"):
-        print("[!] Error: 'kfold_variance_logs.csv' not found. Run trainer.py first.")
+    if not os.path.exists("metrics/kfold_variance_logs.csv"):
+        print("[!] Error: 'metrics/kfold_variance_logs.csv' not found. Run trainer.py first.")
         return False
         
-    df = pd.read_csv("kfold_variance_logs.csv")
+    df = pd.read_csv("metrics/kfold_variance_logs.csv")
     
     mean_train_f1 = df["Train_F1"].mean() * 100
     mean_val_f1 = df["Val_F1"].mean() * 100
