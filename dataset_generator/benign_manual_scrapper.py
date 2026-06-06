@@ -4,8 +4,10 @@ import re
 from playwright.async_api import async_playwright
 from urllib.parse import urlparse
 
-OUTPUT_DIR_BENIGN = "dataset/raw_html/benign"
-LOG_FILE = "dataset/.scraped_log.txt"
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUTPUT_DIR_BENIGN = os.path.join(ROOT_DIR, "dataset", "raw_html", "benign")
+LOG_FILE = os.path.join(ROOT_DIR, "dataset", ".scraped_log.txt")
+TOP_1M_FILE = os.path.join(ROOT_DIR, "top-1m.txt")
 os.makedirs(OUTPUT_DIR_BENIGN, exist_ok=True)
 
 # ANSI colors for terminal logging
@@ -43,8 +45,8 @@ async def main():
 
     manual_benign = []
     global_lines = []
-    if os.path.exists("top-1m.txt"):
-        with open("top-1m.txt", "r", encoding="utf-8") as f:
+    if os.path.exists(TOP_1M_FILE):
+        with open(TOP_1M_FILE, "r", encoding="utf-8") as f:
             global_lines = f.readlines()
             for line_raw in global_lines:
                 line = line_raw.strip()
@@ -56,7 +58,7 @@ async def main():
                         if url not in seen_urls:
                             manual_benign.append((line_raw, url))
     else:
-        print("Error: top-1m.txt missing!")
+        print(f"Error: {TOP_1M_FILE} missing!")
         return
 
     targets_benign = []
@@ -194,7 +196,7 @@ async def main():
             # Physically shrink the top-1m.txt file
             if line_raw in global_lines:
                 global_lines.remove(line_raw)
-                with open("top-1m.txt", "w", encoding="utf-8") as f:
+                with open(TOP_1M_FILE, "w", encoding="utf-8") as f:
                     f.writelines(global_lines)
                     
             try:

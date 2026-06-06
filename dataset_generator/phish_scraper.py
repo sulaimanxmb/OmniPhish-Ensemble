@@ -9,8 +9,9 @@ from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 
-OUTPUT_DIR_PHISH = "dataset/raw_html/phishing"
-OUTPUT_DIR_BENIGN = "dataset/raw_html/benign"
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUTPUT_DIR_PHISH = os.path.join(ROOT_DIR, "dataset", "raw_html", "phishing")
+OUTPUT_DIR_BENIGN = os.path.join(ROOT_DIR, "dataset", "raw_html", "benign")
 os.makedirs(OUTPUT_DIR_PHISH, exist_ok=True)
 os.makedirs(OUTPUT_DIR_BENIGN, exist_ok=True)
 

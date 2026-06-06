@@ -5,7 +5,8 @@ from bs4 import BeautifulSoup
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from tqdm import tqdm
 
-DIRS = ['dataset/raw_html/benign', 'dataset/raw_html/phishing']
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DIRS = [os.path.join(ROOT_DIR, 'dataset/raw_html/benign'), os.path.join(ROOT_DIR, 'dataset/raw_html/phishing')]
 
 def inspect_file(filepath):
     issues = []
@@ -151,7 +152,7 @@ def main():
         filename = re.sub(r'[^a-zA-Z0-9_\-]', '_', filename)
         return filename + ".html"
         
-    benign_txt = "top-1m.txt"
+    benign_txt = os.path.join(ROOT_DIR, "top-1m.txt")
     if os.path.exists(benign_txt):
         print(f"\nSynchronizing '{benign_txt}' with the verified dataset...")
         with open(benign_txt, "r", encoding="utf-8") as f:
@@ -168,7 +169,7 @@ def main():
             else:
                 url_to_check = line
                 
-            expected_file = os.path.join('dataset/raw_html/benign', sanitize_filename_local(url_to_check))
+            expected_file = os.path.join(ROOT_DIR, 'dataset/raw_html/benign', sanitize_filename_local(url_to_check))
             if os.path.exists(expected_file):
                 # File survived the cleaner! It's valid. Remove URL from the scrape feed.
                 removed_count += 1
