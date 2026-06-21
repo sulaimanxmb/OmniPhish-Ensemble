@@ -44,6 +44,21 @@ class CodeBERTEmbedding(nn.Module):
         Passes each chunk through CodeBERT independently and applies Global Max Pooling.
         Returns a single 768-D vector representing the most salient features.
         """
+        chunk_size = 510 # Leave room for 2 special tokens: [CLS] and [SEP]
+        overlap = 50
+        stride = chunk_size - overlap
+        
+        # Determine chunk limit to prevent OOM
+        if max_chunks is None:
+            max_chunks = 4 if self.codebert.training else 12
+            
+        # VERY CRITICAL OPTIMIZATION:
+        # BPE tokenizing a massive HTML file (millions of chars) takes forever on CPU.
+        # Since we only use `max_chunks * chunk_size` tokens, we mathematically only need a fraction of the string.
+        # Assuming ~3 chars per token, we slice the text generously to prevent massive CPU overhead.
+        max_chars_needed = max_chunks * chunk_size * 5
+        text = text[:max_chars_needed]
+        
         # Suppress the max length warning by temporarily changing logging level, 
         # or we just let it warn once. It's harmless since we chunk manually.
         inputs = self.tokenizer(
@@ -56,10 +71,6 @@ class CodeBERTEmbedding(nn.Module):
         input_ids = inputs["input_ids"][0]
         attention_mask = inputs["attention_mask"][0]
         
-        chunk_size = 510 # Leave room for 2 special tokens: [CLS] and [SEP]
-        overlap = 50
-        stride = chunk_size - overlap
-        
         device = next(self.codebert.parameters()).device
         embeddings = []
         
@@ -71,11 +82,6 @@ class CodeBERTEmbedding(nn.Module):
             with torch.set_grad_enabled(self.codebert.training):
                 outputs = self.codebert(input_ids=c_ids, attention_mask=c_mask)
                 return outputs.last_hidden_state[:, 0, :].squeeze(0)
-        
-        # Determine chunk limit to prevent OOM (Out of Memory)
-        # If training (gradients enabled), limit chunks strictly.
-        if max_chunks is None:
-            max_chunks = 4 if self.codebert.training else 12
             
         chunk_ids_list = []
         chunk_masks_list = []

@@ -90,6 +90,9 @@ class PhishingDataset(Dataset):
         # Aggressive cleaning for Windows Multiprocessing string IPC corruption
         if isinstance(filepath, str):
             filepath = filepath.replace('\x00', '').strip()
+            if os.name == 'nt' and not filepath.startswith('\\\\?\\'):
+                # Bypass Win32 MAX_PATH and strict character validation limits
+                filepath = '\\\\?\\' + filepath
             
         try:
             with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
