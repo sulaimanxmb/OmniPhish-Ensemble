@@ -237,7 +237,7 @@ def train_model(batch_size=32, n_optuna_trials=10, n_splits=5):
     train_val_labels = all_labels[train_val_idx]
     
     # For global fast extraction, we only want to extract on the train_val dataset
-    train_val_loader = DataLoader(train_val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True)
+    train_val_loader = DataLoader(train_val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True)
     
     cb_feats, heuristics = None, None
     if mode == "fast":
@@ -245,7 +245,7 @@ def train_model(batch_size=32, n_optuna_trials=10, n_splits=5):
         print("🚀 PHASE 1: GLOBAL CODEBERT PEFT & PRE-EXTRACTION")
         print("="*50)
         codebert = CodeBERTEmbedding(use_lora=True).to(device)
-        train_codebert_lora(DataLoader(train_val_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True), codebert, device, epochs=1)
+        train_codebert_lora(DataLoader(train_val_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True), codebert, device, epochs=1)
         cb_feats, heuristics, _ = global_pre_extract_codebert_heuristics(train_val_loader, codebert, device)
         
     # Prepare CSV for Variance logging
@@ -271,7 +271,7 @@ def train_model(batch_size=32, n_optuna_trials=10, n_splits=5):
         opt_val_subset = Subset(train_val_dataset, opt_val_idx)
         test_subset = Subset(train_val_dataset, test_idx)
         
-        sub_train_loader_shuffled = DataLoader(sub_train_subset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True)
+        sub_train_loader_shuffled = DataLoader(sub_train_subset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True)
         
         # Train CNN strictly on Sub_Train
         print("[*] Training CNN specifically on Sub_Train (Isolating Optuna Validation)...")
@@ -282,9 +282,9 @@ def train_model(batch_size=32, n_optuna_trials=10, n_splits=5):
             codebert_fold = CodeBERTEmbedding(use_lora=True).to(device)
             train_codebert_lora(sub_train_loader_shuffled, codebert_fold, device, epochs=1)
             
-            cnn_sub_train, cb_sub_train, h_sub_train, y_sub_train = extract_all_features(DataLoader(sub_train_subset, batch_size=batch_size, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True), cnn, codebert_fold, device, "Extract Sub-Train")
-            cnn_opt_val, cb_opt_val, h_opt_val, y_opt_val = extract_all_features(DataLoader(opt_val_subset, batch_size=batch_size, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True), cnn, codebert_fold, device, "Extract Optuna-Val")
-            cnn_test, cb_test, h_test, y_test = extract_all_features(DataLoader(test_subset, batch_size=batch_size, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True), cnn, codebert_fold, device, "Extract Test")
+            cnn_sub_train, cb_sub_train, h_sub_train, y_sub_train = extract_all_features(DataLoader(sub_train_subset, batch_size=batch_size, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True), cnn, codebert_fold, device, "Extract Sub-Train")
+            cnn_opt_val, cb_opt_val, h_opt_val, y_opt_val = extract_all_features(DataLoader(opt_val_subset, batch_size=batch_size, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True), cnn, codebert_fold, device, "Extract Optuna-Val")
+            cnn_test, cb_test, h_test, y_test = extract_all_features(DataLoader(test_subset, batch_size=batch_size, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True), cnn, codebert_fold, device, "Extract Test")
             
             X_sub_train = np.concatenate([cnn_sub_train, cb_sub_train, h_sub_train], axis=1)
             X_opt_val = np.concatenate([cnn_opt_val, cb_opt_val, h_opt_val], axis=1)
@@ -292,9 +292,9 @@ def train_model(batch_size=32, n_optuna_trials=10, n_splits=5):
             
         else:
             # Fast Mode: Extract only CNN, grab CodeBERT from global cache
-            cnn_sub_train = extract_cnn_features(DataLoader(sub_train_subset, batch_size=batch_size, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True), cnn, device, "Extract CNN Sub-Train")
-            cnn_opt_val = extract_cnn_features(DataLoader(opt_val_subset, batch_size=batch_size, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True), cnn, device, "Extract CNN Optuna-Val")
-            cnn_test = extract_cnn_features(DataLoader(test_subset, batch_size=batch_size, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True), cnn, device, "Extract CNN Test")
+            cnn_sub_train = extract_cnn_features(DataLoader(sub_train_subset, batch_size=batch_size, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True), cnn, device, "Extract CNN Sub-Train")
+            cnn_opt_val = extract_cnn_features(DataLoader(opt_val_subset, batch_size=batch_size, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True), cnn, device, "Extract CNN Optuna-Val")
+            cnn_test = extract_cnn_features(DataLoader(test_subset, batch_size=batch_size, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True), cnn, device, "Extract CNN Test")
             
             # Heuristics array could be 1D or 2D, safely reshape
             h_sub = heuristics[sub_train_idx]

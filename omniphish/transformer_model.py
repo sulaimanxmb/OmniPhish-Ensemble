@@ -1,7 +1,7 @@
 import os
 import torch
 import torch.nn as nn
-from transformers import RobertaTokenizer, RobertaModel
+from transformers import AutoTokenizer, RobertaModel
 import transformers
 
 # We manually chunk sequences, so suppress the sequence length warnings
@@ -11,7 +11,9 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 class CodeBERTEmbedding(nn.Module):
     def __init__(self, model_name="microsoft/codebert-base", use_lora=False):
         super(CodeBERTEmbedding, self).__init__()
-        self.tokenizer = RobertaTokenizer.from_pretrained(model_name)
+        # CRITICAL FIX: AutoTokenizer automatically loads the Rust-based Fast Tokenizer
+        # The pure Python RobertaTokenizer takes O(N^2) time on large HTML strings.
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.codebert = RobertaModel.from_pretrained(model_name)
         
         # Freeze CodeBERT to save memory, as it acts as a static feature extractor
