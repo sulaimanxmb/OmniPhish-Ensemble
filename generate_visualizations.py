@@ -61,7 +61,7 @@ def generate_xgboost_importance():
 
 def generate_smote_pca():
     print("\n[*] Initializing SMOTE Synthetic Data Generator...")
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     
     dirs = {'phishing': 'dataset/raw_html/phishing', 'benign': 'dataset/raw_html/benign'}
     dataset = PhishingDataset(dirs, undersample_benign=False)
@@ -152,7 +152,7 @@ def generate_inference_based_graphs(choices):
         print("[!] Error: 'weights/vault_indices.npy' not found.")
         return
         
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     
     vault_idx = np.load("weights/vault_indices.npy")
     print(f"[*] Loaded {len(vault_idx)} isolated Zero-Day samples.")

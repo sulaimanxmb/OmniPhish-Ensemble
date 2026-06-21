@@ -171,7 +171,7 @@ def objective(trial, X_train, y_train, X_val, y_val):
     return f1_score(y_val, preds, zero_division=0)
 
 def train_model(batch_size=4, n_optuna_trials=10, n_splits=5):
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     print(f"Training on device: {device}")
     
     import csv

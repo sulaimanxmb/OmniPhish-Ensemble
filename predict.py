@@ -56,7 +56,7 @@ def predict(url):
     max_depth, avg_depth = get_dom_depth_stats(soup)
     heuristic_val = np.array([suspicious_form_action, max_depth, avg_depth], dtype=np.float32)
 
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     
     # Load Models Structure
     cnn = CNN1DEmbedding().to(device)

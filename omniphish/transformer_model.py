@@ -127,7 +127,7 @@ class CodeBERTEmbedding(nn.Module):
 if __name__ == "__main__":
     model = CodeBERTEmbedding(use_lora=True)
     
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     model = model.to(device)
     
     # Simulate a very long document

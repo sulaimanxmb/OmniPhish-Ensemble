@@ -13,7 +13,7 @@ from omniphish.transformer_model import CodeBERTEmbedding
 
 def extract_global_features():
     print("[*] Loading trained Neural Networks...")
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     
     cnn = CNN1DEmbedding(embedding_dim=64, num_filters=128).to(device)
     try:

@@ -67,7 +67,7 @@ if __name__ == "__main__":
     input_tensor = text_to_tensor(sample_text, max_len=512)
     
     # Check if MPS is available
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     model = model.to(device)
     input_tensor = input_tensor.to(device)
     

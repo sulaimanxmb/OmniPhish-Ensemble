@@ -23,7 +23,7 @@ def generate_gradcam():
     print("="*60)
     
     # 1. Setup Environment
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     target_feature_idx = 106  # From XGBoost Feature Importance
     
     print("[*] Loading PyTorch CNN Model...")

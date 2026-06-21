@@ -126,7 +126,7 @@ def train_sota2():
     if X_train is None:
         return
         
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     print(f"\n[*] Training on device: {device}")
     
     # Cost-Sensitive Learning: Mathematically weight the Benign class to fix the 1:4.5 imbalance
