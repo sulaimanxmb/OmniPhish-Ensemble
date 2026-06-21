@@ -14,6 +14,7 @@ import numpy as np
 import optuna
 from sklearn.model_selection import StratifiedKFold, train_test_split
 from imblearn.over_sampling import SMOTE
+from sklearn.preprocessing import StandardScaler
 import time
 
 def set_seed(seed=42):
@@ -282,15 +283,21 @@ def train_model(batch_size=4, n_optuna_trials=10, n_splits=5):
         X_train_full = np.concatenate([X_sub_train, X_opt_val], axis=0)
         y_train_full = np.concatenate([y_sub_train, y_opt_val], axis=0)
         
+        # Apply Distance Normalisation (Standard Scaling) prior to SMOTE
+        scaler = StandardScaler()
+        X_sub_train_scaled = scaler.fit_transform(X_sub_train)
+        X_opt_val_scaled = scaler.transform(X_opt_val)
+        X_test_scaled = scaler.transform(X_test)
+        
         # Apply SMOTE strictly to Sub_Train for Optuna
-        print(f"[*] Raw Sub-Train Shape: {X_sub_train.shape} | Benign: {np.sum(y_sub_train==0)}, Phishing: {np.sum(y_sub_train==1)}")
+        print(f"[*] Raw Sub-Train Shape: {X_sub_train_scaled.shape} | Benign: {np.sum(y_sub_train==0)}, Phishing: {np.sum(y_sub_train==1)}")
         smote = SMOTE(random_state=42)
-        X_sub_train_smote, y_sub_train_smote = smote.fit_resample(X_sub_train, y_sub_train)
+        X_sub_train_smote, y_sub_train_smote = smote.fit_resample(X_sub_train_scaled, y_sub_train)
         
         print("[*] Running Optuna Parameter Optimization...")
         optuna.logging.set_verbosity(optuna.logging.WARNING) # Suppress massive output
         study = optuna.create_study(direction="maximize")
-        study.optimize(lambda trial: objective(trial, X_sub_train_smote, y_sub_train_smote, X_opt_val, y_opt_val), n_trials=n_optuna_trials)
+        study.optimize(lambda trial: objective(trial, X_sub_train_smote, y_sub_train_smote, X_opt_val_scaled, y_opt_val), n_trials=n_optuna_trials)
         
         best = study.best_trial.params
         print(f"[*] Optuna Best Trial F1: {study.best_trial.value:.4f}")
@@ -302,8 +309,12 @@ def train_model(batch_size=4, n_optuna_trials=10, n_splits=5):
             'subsample': best['xgb_subsample']
         }
         
+        # Re-scale Full Fold Train and test for final evaluation
+        X_train_full_scaled = scaler.fit_transform(X_train_full)
+        X_test_scaled_final = scaler.transform(X_test)
+
         # Final Train on Full SMOTE Fold
-        X_train_smote, y_train_smote = smote.fit_resample(X_train_full, y_train_full)
+        X_train_smote, y_train_smote = smote.fit_resample(X_train_full_scaled, y_train_full)
         meta = MetaClassifier(use_logistic_regression=True, xgb_params=best_xgb_params)
         meta.train(X_train_smote, y_train_smote)
         
@@ -317,7 +328,7 @@ def train_model(batch_size=4, n_optuna_trials=10, n_splits=5):
                 torch.save(codebert.state_dict(), "weights/codebert_trained.pt")
                 
         # Evaluate on Validation (Test Fold)
-        preds_val = [meta.predict(x) for x in X_test]
+        preds_val = [meta.predict(x) for x in X_test_scaled_final]
         acc_val = accuracy_score(y_test, preds_val)
         prec_val = precision_score(y_test, preds_val, zero_division=0)
         rec_val = recall_score(y_test, preds_val, zero_division=0)
@@ -330,7 +341,7 @@ def train_model(batch_size=4, n_optuna_trials=10, n_splits=5):
         fpr_val = fp / (fp + tn) if (fp + tn) > 0 else 0.0
         
         # Evaluate on Train Fold (Method 2 Logging)
-        preds_train = [meta.predict(x) for x in X_train_full] # Using full train (un-smoted) for realistic training precision
+        preds_train = [meta.predict(x) for x in X_train_full_scaled] # Using full train (un-smoted) for realistic training precision
         prec_train = precision_score(y_train_full, preds_train, zero_division=0)
         f1_train = f1_score(y_train_full, preds_train, zero_division=0)
         

@@ -32,8 +32,10 @@ weights/
 top-1m.txt
 *.pdf
 *.tex
-*.png
-*.html
+Project_Summary_For_Research_Paper.md
+# allow specific visualizations but ignore others
+!visualizations/
+!visualizations/*.png
 *_temp.py
 baseline_predict.py
 doit.py

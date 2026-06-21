@@ -79,9 +79,14 @@ def run_ablation_test(test_name, X, y, test_idx):
     X_test = X[test_idx]
     y_test = y[test_idx]
     
-    # 2. Fix the Imbalanced Dataset using SMOTE!
+    # 2. Fix the Imbalanced Dataset using SMOTE (with Distance Normalisation)
+    from sklearn.preprocessing import StandardScaler
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train_raw)
+    X_test_scaled = scaler.transform(X_test)
+    
     smote = SMOTE(random_state=42)
-    X_train_smote, y_train_smote = smote.fit_resample(X_train_raw, y_train_raw)
+    X_train_smote, y_train_smote = smote.fit_resample(X_train_scaled, y_train_raw)
     
     # 3. Train the Meta-Classifier
     model = xgb.XGBClassifier(
@@ -95,8 +100,8 @@ def run_ablation_test(test_name, X, y, test_idx):
     model.fit(X_train_smote, y_train_smote)
     
     # 4. Evaluate on Zero-Day Vault
-    all_preds = model.predict(X_test)
-    y_probs = model.predict_proba(X_test)[:, 1] if len(np.unique(y_test)) > 1 else np.zeros_like(all_preds, dtype=float)
+    all_preds = model.predict(X_test_scaled)
+    y_probs = model.predict_proba(X_test_scaled)[:, 1] if len(np.unique(y_test)) > 1 else np.zeros_like(all_preds, dtype=float)
     
     acc = accuracy_score(y_test, all_preds)
     prec = precision_score(y_test, all_preds, zero_division=0)

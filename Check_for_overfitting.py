@@ -2,6 +2,8 @@ import os
 import numpy as np
 import pandas as pd
 import torch
+import time
+import psutil
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import classification_report, confusion_matrix, precision_score, recall_score, f1_score, accuracy_score
@@ -99,6 +101,8 @@ def test_zero_day_vault():
     print("[*] Extracting Structural & Semantic features for Vault data...")
     cnn_feats, cb_feats, heuristics, labels_list = [], [], [], []
     
+    start_time = time.time()
+    
     with torch.no_grad():
         for batch_dicts, labels in tqdm(vault_loader, desc="Vault Extraction"):
             for item, label in zip(batch_dicts, labels):
@@ -125,6 +129,15 @@ def test_zero_day_vault():
     print("[*] Running XGBoost Meta-Classifier on Vault features...")
     y_pred = [meta.predict(x) for x in X_vault]
     
+    end_time = time.time()
+    
+    # Calculate Latency & RAM
+    total_time_seconds = end_time - start_time
+    total_samples = len(vault_idx)
+    ms_per_url = (total_time_seconds / total_samples) * 1000
+    process = psutil.Process(os.getpid())
+    peak_ram_mb = process.memory_info().rss / (1024 * 1024)
+    
     acc = accuracy_score(y_true, y_pred) * 100
     prec = precision_score(y_true, y_pred, zero_division=0) * 100
     rec = recall_score(y_true, y_pred, zero_division=0) * 100
@@ -137,6 +150,9 @@ def test_zero_day_vault():
     print(f"Precision: {prec:.2f}%")
     print(f"Recall:    {rec:.2f}%")
     print(f"F1-Score:  {f1:.2f}%")
+    print("-" * 40)
+    print(f"Latency:   {ms_per_url:.2f} ms per URL")
+    print(f"Peak RAM:  {peak_ram_mb:.2f} MB")
     print("="*40)
     
     print("\n[Detailed Classification Report]")

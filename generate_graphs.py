@@ -3,10 +3,10 @@ import numpy as np
 
 # Data
 metrics = ['Accuracy', 'Precision', 'Recall', 'F1-Score']
-sota_tfidf = [93.12, 99.10, 92.44, 95.65]
-baseline_rf = [95.35, 98.07, 96.22, 97.14]
-sota_cnn = [96.21, 98.50, 96.85, 97.67]
-ensemble = [98.97, 99.57, 99.13, 99.35]
+sota_tfidf = [92.62, 97.60, 91.99, 94.71]
+baseline_rf = [92.74, 97.25, 92.51, 94.82]
+sota_cnn = [96.75, 97.57, 97.91, 97.74]
+ensemble = [98.37, 98.94, 98.76, 98.85]
 
 x = np.arange(len(metrics))
 width = 0.2
@@ -14,10 +14,10 @@ width = 0.2
 fig, ax = plt.subplots(figsize=(12, 6))
 
 # IEEE standard styling (Grayscale/Blue for professional print)
-rects1 = ax.bar(x - 1.5*width, sota_tfidf, width, label='SOTA-1 (TF-IDF)', color='#D3D3D3')
-rects2 = ax.bar(x - 0.5*width, baseline_rf, width, label='Baseline (Random Forest)', color='#A9A9A9')
-rects3 = ax.bar(x + 0.5*width, sota_cnn, width, label='SOTA-2 (Raw CNN)', color='#696969')
-rects4 = ax.bar(x + 1.5*width, ensemble, width, label='Proposed Ensemble', color='#1f77b4')
+rects1 = ax.bar(x - 1.5*width, sota_tfidf, width, label='TF-IDF (NLP)', color='#D3D3D3')
+rects2 = ax.bar(x - 0.5*width, baseline_rf, width, label='Random Forest (Heuristics)', color='#A9A9A9')
+rects3 = ax.bar(x + 0.5*width, sota_cnn, width, label='Raw 1D-CNN', color='#696969')
+rects4 = ax.bar(x + 1.5*width, ensemble, width, label='OmniPhish (Proposed)', color='#1f77b4')
 
 ax.set_ylabel('Percentage (%)', fontweight='bold')
 ax.set_title('Performance Metrics Comparison on Zero-Day Vault', fontweight='bold', pad=15)
@@ -45,5 +45,5 @@ autolabel(rects3)
 autolabel(rects4)
 
 fig.tight_layout()
-plt.savefig('performance_comparison.png', dpi=300, bbox_inches='tight')
-print('Successfully generated performance_comparison.png')
+plt.savefig('visualizations/performance_comparison.png', dpi=300, bbox_inches='tight')
+print('Successfully generated visualizations/performance_comparison.png')
