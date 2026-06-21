@@ -101,6 +101,11 @@ class PhishingDataset(Dataset):
             print(f"\n[!] WARNING: Windows IPC failed to read {filepath} - injecting blank fallback.")
             raw_html = "<html></html>"
             
+        # SAFETY: Obfuscated phishing files can sometimes be 10+ MB of Base64 on a single line.
+        # BeautifulSoup will completely freeze your CPU for 60+ seconds trying to build a DOM for this.
+        # We aggressively truncate to the first 100,000 characters to prevent pipeline stalls.
+        raw_html = raw_html[:100000]
+            
         cleaned_html = clean_html(raw_html)
         
         # 1. Provide ASCII/Byte representation for CNN
