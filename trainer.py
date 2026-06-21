@@ -29,7 +29,28 @@ def set_seed(seed=42):
     torch.backends.cudnn.benchmark = False
     os.environ['PYTHONHASHSEED'] = str(seed)
 
+def verify_cuda_installation():
+    """Checks if an NVIDIA GPU exists but PyTorch was installed without CUDA."""
+    if not torch.cuda.is_available():
+        import subprocess
+        try:
+            # If nvidia-smi executes successfully, they have an NVIDIA GPU
+            subprocess.check_output(['nvidia-smi'], stderr=subprocess.STDOUT)
+            print("\n" + "!"*80)
+            print("🚨 CRITICAL WARNING: NVIDIA GPU DETECTED BUT PYTORCH CANNOT USE IT! 🚨")
+            print("It appears you installed the CPU-only version of PyTorch.")
+            print("Your massive RTX GPU is sitting idle. To fix this, stop the script and run:")
+            print("\n  pip uninstall torch torchvision torchaudio -y")
+            print("  pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121\n")
+            print("!"*80 + "\n")
+            import time
+            time.sleep(5) # Give them time to read it
+        except Exception:
+            # Not an NVIDIA system (e.g., Mac with MPS, or pure CPU), which is fine.
+            pass
+
 set_seed(42)
+verify_cuda_installation()
 
 def get_training_mode():
     print("\n" + "="*50)
