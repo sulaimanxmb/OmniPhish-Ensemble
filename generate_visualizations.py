@@ -74,7 +74,7 @@ def generate_smote_pca():
     
     imbalanced_idx = selected_benign + selected_phish
     imbalanced_subset = Subset(dataset, imbalanced_idx)
-    loader = DataLoader(imbalanced_subset, batch_size=32, shuffle=False, collate_fn=custom_collate, num_workers=8, pin_memory=True)
+    loader = DataLoader(imbalanced_subset, batch_size=32, shuffle=False, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True)
     
     cnn = CNN1DEmbedding(embedding_dim=64, num_filters=128).to(device)
     cnn.load_state_dict(torch.load("weights/cnn_trained.pt", map_location=device))
@@ -160,7 +160,7 @@ def generate_inference_based_graphs(choices):
     dirs = {'phishing': 'dataset/raw_html/phishing', 'benign': 'dataset/raw_html/benign'}
     dataset = PhishingDataset(dirs, undersample_benign=False)
     vault_subset = Subset(dataset, vault_idx)
-    vault_loader = DataLoader(vault_subset, batch_size=32, shuffle=False, collate_fn=custom_collate, num_workers=8, pin_memory=True)
+    vault_loader = DataLoader(vault_subset, batch_size=32, shuffle=False, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True)
     
     print("[*] Loading Neural Networks...")
     cnn = CNN1DEmbedding(embedding_dim=64, num_filters=128).to(device)

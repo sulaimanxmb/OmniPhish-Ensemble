@@ -75,7 +75,34 @@ def extract_metrics(log_lines):
     # Filter to most relevant 2-3 lines
     return unique_metrics[-3:] if unique_metrics else ["Completed successfully (No generic metrics extracted). Check logs."]
 
+def check_dataset_integrity():
+    """Validates that the exact expected number of raw HTML files exist to prevent corrupted runs."""
+    benign_dir = os.path.join("Dataset", "raw_html", "benign")
+    phish_dir = os.path.join("Dataset", "raw_html", "phishing")
+    
+    if not os.path.exists(benign_dir) or not os.path.exists(phish_dir):
+        print("\n[!] FATAL ERROR: Dataset directories not found! Please extract Dataset.zip into the root folder.")
+        sys.exit(1)
+        
+    benign_count = len([f for f in os.listdir(benign_dir) if f.endswith(".html")])
+    phish_count = len([f for f in os.listdir(phish_dir) if f.endswith(".html")])
+    
+    EXPECTED_BENIGN = 2250
+    EXPECTED_PHISH = 5740
+    
+    if benign_count != EXPECTED_BENIGN or phish_count != EXPECTED_PHISH:
+        print("\n" + "!"*80)
+        print("🚨 DATASET CORRUPTION DETECTED 🚨")
+        print(f"Expected Benign: {EXPECTED_BENIGN} | Found: {benign_count}")
+        print(f"Expected Phishing: {EXPECTED_PHISH} | Found: {phish_count}")
+        print("Please re-extract the OmniPhish Kaggle dataset cleanly to prevent corrupted research metrics.")
+        print("!"*80 + "\n")
+        sys.exit(1)
+        
+    print(f"[*] Dataset Integrity Verified: {benign_count} Benign, {phish_count} Phishing.")
+
 def main():
+    check_dataset_integrity()
     start_time = time.time()
     
     print("\n" + "#"*80)
