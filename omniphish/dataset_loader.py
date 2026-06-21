@@ -87,8 +87,16 @@ class PhishingDataset(Dataset):
         filepath = self.samples[idx]
         label = self.labels[idx]
         
-        with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
-            raw_html = f.read()
+        # Aggressive cleaning for Windows Multiprocessing string IPC corruption
+        if isinstance(filepath, str):
+            filepath = filepath.replace('\x00', '').strip()
+            
+        try:
+            with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                raw_html = f.read()
+        except OSError as e:
+            print(f"\n[!] WARNING: Windows IPC failed to read {filepath} - injecting blank fallback.")
+            raw_html = "<html></html>"
             
         cleaned_html = clean_html(raw_html)
         
