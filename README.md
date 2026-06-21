@@ -11,6 +11,11 @@ This repository contains the codebase for OmniPhish, a novel Deep Learning Stack
 - **XGBoost Meta-Classifier**: Fuses the multi-modal features via Optuna-optimized hyper-parameters.
 - **Latent Space Imbalance Handling**: Employs fold-isolated SMOTE with Standard Scaling strictly inside the training split to geometrically balance the 899-D space without data leakage.
 
+## Hardware Branches
+This repository is split into two specialized branches depending on your hardware environment:
+- `main`: Designed for low-resource hardware (Mac M-Series, laptops, CPUs). Uses `batch_size=1` and single-core DataLoaders to prevent memory exhaustion and IPC crashes.
+- `cuda-optimized`: Designed for high-performance NVIDIA RTX machines. Uses `batch_size=32`, `num_workers=4/8` DataLoaders, Automatic Mixed Precision (AMP), and GPU-accelerated XGBoost. It also includes specific bypasses for Windows Win32 MAX_PATH and Windows Defender IPC blockages.
+
 ## Project Structure
 - `omniphish/`: Core modules including data loaders, parsers, and neural network architectures (CNN1D & CodeBERT).
 - `dataset_generator/`: Playwright-based autonomous ingestion pipeline for extracting raw HTML from evasive live sites.
@@ -31,8 +36,17 @@ The raw HTML dataset used to train this model is hosted externally to keep this 
 
 ## How to Run
 1. Install dependencies: `pip install -r requirements.txt` (and run `playwright install`)
-2. Execute the main pipeline: `python trainer.py`
-3. Check for overfitting on the isolated zero-day vault: `python Check_for_overfitting.py`
-4. Generate analytical graphs: `python generate_visualizations.py`
+
+### Option A: Fully Automated Master Pipeline (Recommended)
+You can automatically execute the entire pipeline unattended, which will run the models, the evaluations, the baselines, and the visualizations sequentially. It will generate a Master Dashboard of metrics at the end:
+```bash
+python run_pipeline.py
+```
+
+### Option B: Manual Execution
+If you wish to run scripts individually:
+1. Execute the main pipeline: `python trainer.py`
+2. Check for overfitting on the isolated zero-day vault: `python Check_for_overfitting.py`
+3. Generate analytical graphs: `python generate_visualizations.py`
 
 *Note: This repository is currently anonymized for double-blind peer review.*
