@@ -5,7 +5,7 @@ import time
 import re
 
 SCRIPTS_TO_RUN = [
-    ("trainer.py", True),  # True means we inject "1\n" for Fast Mode
+    ("trainer.py", "PROMPT_MODE"),  # Special flag to inject user's choice
     ("Check_for_overfitting.py", False),
     ("ablation_study.py", False),
     ("baselines/baseline_trainer.py", False),
@@ -14,7 +14,7 @@ SCRIPTS_TO_RUN = [
     ("generate_visualizations.py", False)
 ]
 
-def run_script(script_name, provide_input=False):
+def run_script(script_name, inject_input=False):
     print(f"\n{'='*60}\n🚀 EXECUTING: {script_name}\n{'='*60}")
     
     log_dir = "pipeline_logs"
@@ -26,9 +26,9 @@ def run_script(script_name, provide_input=False):
     cmd = [sys.executable, script_name]
     
     try:
-        if provide_input:
+        if inject_input:
             process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, encoding='utf-8', errors='ignore')
-            process.stdin.write("1\n")
+            process.stdin.write(f"{inject_input}\n")
             process.stdin.flush()
         else:
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, encoding='utf-8', errors='ignore')
@@ -84,6 +84,17 @@ def main():
     print("\nThis script will automatically execute the entire pipeline unattended.")
     print("All outputs will be mirrored to the 'pipeline_logs/' directory.\n")
     
+    # Ask for Training Mode
+    print("==================================================")
+    print("🚀 SELECT TRAINING MODE FOR THE PIPELINE")
+    print("==================================================")
+    print("[1] FAST MODE (Global CodeBERT PEFT, Feature-Leak accepted, ~15 mins)")
+    print("[2] SLOW MODE (Strict K-Fold CodeBERT Isolation, Zero-Leak, ~2 hours)")
+    print("==================================================")
+    mode_choice = input("Enter 1 or 2 [Default: 1]: ").strip()
+    if mode_choice not in ['1', '2']:
+        mode_choice = '1'
+    
     results_dashboard = {}
     
     for script, inject_input in SCRIPTS_TO_RUN:
@@ -92,7 +103,10 @@ def main():
             results_dashboard[script] = ("SKIPPED", ["File not found"])
             continue
             
-        success, log_lines = run_script(script, provide_input=inject_input)
+        # Resolve dynamic input
+        current_input = mode_choice if inject_input == "PROMPT_MODE" else inject_input
+            
+        success, log_lines = run_script(script, inject_input=current_input)
         
         if success:
             metrics = extract_metrics(log_lines)
