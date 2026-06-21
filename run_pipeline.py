@@ -84,16 +84,30 @@ def main():
     print("\nThis script will automatically execute the entire pipeline unattended.")
     print("All outputs will be mirrored to the 'pipeline_logs/' directory.\n")
     
-    # Ask for Training Mode
+    global SCRIPTS_TO_RUN
+    
     print("==================================================")
-    print("🚀 SELECT TRAINING MODE FOR THE PIPELINE")
+    print("🚀 PIPELINE CONFIGURATION")
     print("==================================================")
-    print("[1] FAST MODE (Global CodeBERT PEFT, Feature-Leak accepted, ~15 mins)")
-    print("[2] SLOW MODE (Strict K-Fold CodeBERT Isolation, Zero-Leak, ~2 hours)")
+    print("[1] RUN trainer.py (Execute full training from scratch)")
+    print("[2] SKIP trainer.py (Only run evaluations and baselines using existing weights)")
     print("==================================================")
-    mode_choice = input("Enter 1 or 2 [Default: 1]: ").strip()
-    if mode_choice not in ['1', '2']:
-        mode_choice = '1'
+    skip_choice = input("Enter 1 or 2 [Default: 1]: ").strip()
+    
+    mode_choice = '1'
+    if skip_choice == '2':
+        SCRIPTS_TO_RUN = [s for s in SCRIPTS_TO_RUN if s[0] != "trainer.py"]
+    else:
+        # Ask for Training Mode
+        print("\n==================================================")
+        print("🚀 SELECT TRAINING MODE FOR THE PIPELINE")
+        print("==================================================")
+        print("[1] FAST MODE (Global CodeBERT PEFT, Feature-Leak accepted, ~15 mins)")
+        print("[2] SLOW MODE (Strict K-Fold CodeBERT Isolation, Zero-Leak, ~2 hours)")
+        print("==================================================")
+        mode_choice = input("Enter 1 or 2 [Default: 1]: ").strip()
+        if mode_choice not in ['1', '2']:
+            mode_choice = '1'
     
     results_dashboard = {}
     
