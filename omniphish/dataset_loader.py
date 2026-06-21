@@ -47,6 +47,8 @@ class PhishingDataset(Dataset):
         benign_samples = []
         
         for class_label, folder_path in raw_html_dirs.items():
+            # Resolve absolute path to prevent Windows Multiprocessing Errno 22 crashes
+            folder_path = os.path.abspath(folder_path)
             if not os.path.exists(folder_path):
                 continue
             
@@ -55,7 +57,8 @@ class PhishingDataset(Dataset):
             # No artificial capping applied; utilizing the full Phishing dataset.
                 
             for filename in files:
-                filepath = os.path.join(folder_path, filename)
+                # Store absolute normalized paths
+                filepath = os.path.normpath(os.path.join(folder_path, filename))
                 if class_label == 'phishing':
                     phish_samples.append(filepath)
                 else:
