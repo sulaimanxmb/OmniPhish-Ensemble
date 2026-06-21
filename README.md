@@ -20,6 +20,15 @@ This repository contains the codebase for OmniPhish, a novel Deep Learning Stack
 - `predict.py`: Inference engine for real-world deployment.
 - `ablation_study.py`: Script to generate the semantic-structural paradox metrics.
 
+## Dataset Setup
+The raw HTML dataset used to train this model is hosted externally to keep this repository lightweight. Before running the training pipeline, you must acquire the dataset:
+
+1. **Download**: Navigate to the [OmniPhish Dataset v1 on Kaggle](https://www.kaggle.com/datasets/sulaimaneksambi/omniphish-dataset-v1) and download the archive.
+   - *Alternatively, use the Kaggle CLI:* `kaggle datasets download -d sulaimaneksambi/omniphish-dataset-v1`
+2. **Extract**: Unzip the downloaded file and place the folders at the root of this project exactly like this:
+   - `Dataset/raw_html/phishing/`
+   - `Dataset/raw_html/benign/`
+
 ## How to Run
 1. Install dependencies: `pip install -r requirements.txt` (and run `playwright install`)
 2. Execute the main pipeline: `python trainer.py`
