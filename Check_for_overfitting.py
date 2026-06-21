@@ -70,7 +70,7 @@ def test_zero_day_vault():
     dirs = {'phishing': 'dataset/raw_html/phishing', 'benign': 'dataset/raw_html/benign'}
     dataset = PhishingDataset(dirs, undersample_benign=False)
     vault_subset = Subset(dataset, vault_idx)
-    vault_loader = DataLoader(vault_subset, batch_size=4, shuffle=False, collate_fn=custom_collate)
+    vault_loader = DataLoader(vault_subset, batch_size=32, shuffle=False, collate_fn=custom_collate, num_workers=8, pin_memory=True)
     
     # 1. Load Models
     print("[*] Loading trained Neural Networks and Meta-Classifier...")

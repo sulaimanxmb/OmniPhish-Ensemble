@@ -15,6 +15,7 @@ class MetaClassifier:
         XGBoost is the primary tabular classifier.
         Logistic Regression is optionally used as a fast, highly-regularized baseline.
         """
+        import torch
         default_params = {
             'n_estimators': 100, 
             'max_depth': 3, 
@@ -23,8 +24,9 @@ class MetaClassifier:
             'colsample_bytree': 0.8,
             'random_state': 42,
             'eval_metric': 'logloss',
-            'n_jobs': 1,  # CRITICAL: Prevents segmentation fault on macOS M-series chips
-            'tree_method': 'hist' # CRITICAL: Bypasses the exact greedy algorithm which triggers the segfault
+            'n_jobs': -1 if torch.cuda.is_available() else 1,  # Max out threads on PC, prevent segfault on Mac
+            'tree_method': 'hist',
+            'device': 'cuda' if torch.cuda.is_available() else 'cpu'
         }
         
         if xgb_params is not None:
