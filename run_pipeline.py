@@ -1,5 +1,6 @@
 import os
 import sys
+import io
 import subprocess
 import time
 import re
@@ -27,17 +28,19 @@ def run_script(script_name, inject_input=False):
     
     try:
         if inject_input:
-            process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, encoding='utf-8', errors='ignore', newline='')
-            process.stdin.write(f"{inject_input}\n")
+            process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            process.stdin.write(f"{inject_input}\n".encode('utf-8'))
             process.stdin.flush()
         else:
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, encoding='utf-8', errors='ignore', newline='')
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            
+        stdout_wrapper = io.TextIOWrapper(process.stdout, encoding='utf-8', errors='ignore', newline='')
             
         full_log = []
         current_line = []
         with open(log_file, "w", encoding="utf-8") as f:
             while True:
-                char = process.stdout.read(1)
+                char = stdout_wrapper.read(1)
                 if not char:
                     if current_line:
                         line = "".join(current_line)
