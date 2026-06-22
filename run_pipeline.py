@@ -6,13 +6,13 @@ import time
 import re
 
 SCRIPTS_TO_RUN = [
-    ("trainer.py", "PROMPT_MODE"),  # Special flag to inject user's choice
-    ("Check_for_overfitting.py", False),
-    ("ablation_study.py", False),
+    ("trainer.py" if os.path.exists("trainer.py") else "scripts/training/trainer.py", "PROMPT_MODE"),  # Special flag to inject user's choice
+    ("Check_for_overfitting.py" if os.path.exists("Check_for_overfitting.py") else "scripts/evaluation/Check_for_overfitting.py", False),
+    ("ablation_study.py" if os.path.exists("ablation_study.py") else "scripts/evaluation/ablation_study.py", False),
     ("baselines/baseline_trainer.py", False),
     ("baselines/sota_trainer.py", False),
     ("baselines/sota2_trainer.py", False),
-    ("generate_visualizations.py", False)
+    ("generate_visualizations.py" if os.path.exists("generate_visualizations.py") else "scripts/visualization/generate_visualizations.py", False)
 ]
 
 def run_script(script_name, inject_input=False):
@@ -138,6 +138,17 @@ def main():
     print("[2] SKIP trainer.py (Only run evaluations and baselines using existing weights)")
     print("==================================================")
     skip_choice = input("Enter 1 or 2 [Default: 1]: ").strip()
+    
+    print("\n==================================================")
+    print("🎨 VISUALIZATIONS CONFIGURATION")
+    print("==================================================")
+    print("[1] YES (Generate graphs and plots at the end)")
+    print("[2] NO (Skip generate_visualizations.py)")
+    print("==================================================")
+    vis_choice = input("Enter 1 or 2 [Default: 1]: ").strip()
+    
+    if vis_choice == '2':
+        SCRIPTS_TO_RUN = [s for s in SCRIPTS_TO_RUN if "generate_visualizations" not in s[0]]
     
     mode_choice = '1'
     if skip_choice == '2':
