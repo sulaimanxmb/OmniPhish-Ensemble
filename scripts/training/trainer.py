@@ -117,6 +117,13 @@ def train_codebert_lora(train_loader, codebert, device, epochs=1):
             elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
                 torch.mps.empty_cache()
 
+    # Explicitly clear massive memory artifacts from the GPU to prevent PCIe thrashing
+    codebert.zero_grad(set_to_none=True)
+    del optimizer
+    del temp_classifier
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
 def global_pre_extract_codebert_heuristics(dataloader, codebert, device):
     """Extracts CodeBERT and Heuristic features for the ENTIRE dataset ONCE (Fast Mode)."""
     if torch.cuda.is_available():
@@ -145,17 +152,18 @@ def extract_all_features(dataloader, gnn, codebert, device, desc):
     gnn_feats, cb_feats, heuristics, labels_list = [], [], [], []
     
     with torch.no_grad():
-        for batch_dicts, labels in tqdm(dataloader, desc=desc, leave=False):
-            for item, label in zip(batch_dicts, labels):
-                gnn_nodes = item['gnn_nodes'].unsqueeze(0).to(device)
-                gnn_adj = item['gnn_adj'].unsqueeze(0).to(device)
-                c_emb = gnn(gnn_nodes, gnn_adj).cpu().numpy().flatten()
-                cb_emb = codebert.compute_embedding(item['codebert_text']).cpu().numpy().flatten()
-                
-                gnn_feats.append(c_emb)
-                cb_feats.append(cb_emb)
-                heuristics.append(item['heuristic'].cpu().numpy())
-                labels_list.append(label.item())
+        with torch.amp.autocast('cuda', enabled=torch.cuda.is_available()):
+            for batch_dicts, labels in tqdm(dataloader, desc=desc, leave=False):
+                for item, label in zip(batch_dicts, labels):
+                    gnn_nodes = item['gnn_nodes'].unsqueeze(0).to(device)
+                    gnn_adj = item['gnn_adj'].unsqueeze(0).to(device)
+                    c_emb = gnn(gnn_nodes, gnn_adj).cpu().numpy().flatten()
+                    cb_emb = codebert.compute_embedding(item['codebert_text']).cpu().numpy().flatten()
+                    
+                    gnn_feats.append(c_emb)
+                    cb_feats.append(cb_emb)
+                    heuristics.append(item['heuristic'].cpu().numpy())
+                    labels_list.append(label.item())
                 
     return np.array(gnn_feats), np.array(cb_feats), np.array(heuristics), np.array(labels_list)
 
@@ -188,18 +196,26 @@ def train_gnn(train_loader, device, epochs=5):
             scaler.update()
             
             epoch_loss += loss.item()
+            
+    gnn.zero_grad(set_to_none=True)
+    del optimizer
+    del temp_classifier
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        
     return gnn
 
 def extract_gnn_features(dataloader, gnn, device, desc):
     gnn.eval()
     gnn_feats = []
     with torch.no_grad():
-        for batch_dicts, _ in tqdm(dataloader, desc=desc, leave=False):
-            for item in batch_dicts:
-                gnn_nodes = item['gnn_nodes'].unsqueeze(0).to(device)
-                gnn_adj = item['gnn_adj'].unsqueeze(0).to(device)
-                c_emb = gnn(gnn_nodes, gnn_adj).cpu().numpy().flatten()
-                gnn_feats.append(c_emb)
+        with torch.amp.autocast('cuda', enabled=torch.cuda.is_available()):
+            for batch_dicts, _ in tqdm(dataloader, desc=desc, leave=False):
+                for item in batch_dicts:
+                    gnn_nodes = item['gnn_nodes'].unsqueeze(0).to(device)
+                    gnn_adj = item['gnn_adj'].unsqueeze(0).to(device)
+                    c_emb = gnn(gnn_nodes, gnn_adj).cpu().numpy().flatten()
+                    gnn_feats.append(c_emb)
     return np.array(gnn_feats)
 
 def objective(trial, X_train, y_train, X_val, y_val):
