@@ -7,8 +7,8 @@ import re
 
 SCRIPTS_TO_RUN = [
     ("trainer.py" if os.path.exists("trainer.py") else "scripts/training/trainer.py", "PROMPT_MODE"),  # Special flag to inject user's choice
-    ("Check_for_overfitting.py" if os.path.exists("Check_for_overfitting.py") else "scripts/evaluation/Check_for_overfitting.py", False),
-    ("ablation_study.py" if os.path.exists("ablation_study.py") else "scripts/evaluation/ablation_study.py", False),
+    ("Check_for_overfitting.py" if os.path.exists("Check_for_overfitting.py") else "scripts/training/Check_for_overfitting.py", False),
+    ("ablation_study.py" if os.path.exists("ablation_study.py") else "scripts/training/ablation_study.py", False),
     ("baselines/baseline_trainer.py", False),
     ("baselines/sota_trainer.py", False),
     ("baselines/sota2_trainer.py", False),
