@@ -113,6 +113,13 @@ def train_codebert_lora(train_loader, codebert, device, epochs=1):
             
             if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
                 torch.mps.empty_cache()
+                
+    # Explicitly clear massive memory artifacts from the GPU to prevent PCIe thrashing
+    codebert.zero_grad(set_to_none=True)
+    del optimizer
+    del temp_classifier
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
 def global_pre_extract_codebert_heuristics(dataloader, codebert, device):
     """Extracts CodeBERT and Heuristic features for the ENTIRE dataset ONCE (Fast Mode)."""
@@ -120,10 +127,11 @@ def global_pre_extract_codebert_heuristics(dataloader, codebert, device):
     cb_feats, heuristics, labels_list = [], [], []
     
     with torch.no_grad():
-        for batch_dicts, labels in tqdm(dataloader, desc="Global Extraction: CodeBERT & Heuristics"):
-            for item, label in zip(batch_dicts, labels):
-                cb_emb = codebert.compute_embedding(item['codebert_text']).cpu().numpy().flatten()
-                cb_feats.append(cb_emb)
+        with torch.amp.autocast('cuda', enabled=torch.cuda.is_available()):
+            for batch_dicts, labels in tqdm(dataloader, desc="Global Extraction: CodeBERT & Heuristics"):
+                for item, label in zip(batch_dicts, labels):
+                    cb_emb = codebert.compute_embedding(item['codebert_text']).cpu().numpy().flatten()
+                    cb_feats.append(cb_emb)
                 
                 # Squeeze the tensor if needed and convert to numpy
                 h_val = item['heuristic'].cpu().numpy()
@@ -139,10 +147,11 @@ def extract_all_features(dataloader, cnn, codebert, device, desc):
     cnn_feats, cb_feats, heuristics, labels_list = [], [], [], []
     
     with torch.no_grad():
-        for batch_dicts, labels in tqdm(dataloader, desc=desc, leave=False):
-            for item, label in zip(batch_dicts, labels):
-                c_emb = cnn(item['cnn_input'].unsqueeze(0).to(device)).cpu().numpy().flatten()
-                cb_emb = codebert.compute_embedding(item['codebert_text']).cpu().numpy().flatten()
+        with torch.amp.autocast('cuda', enabled=torch.cuda.is_available()):
+            for batch_dicts, labels in tqdm(dataloader, desc=desc, leave=False):
+                for item, label in zip(batch_dicts, labels):
+                    c_emb = cnn(item['cnn_input'].unsqueeze(0).to(device)).cpu().numpy().flatten()
+                    cb_emb = codebert.compute_embedding(item['codebert_text']).cpu().numpy().flatten()
                 
                 cnn_feats.append(c_emb)
                 cb_feats.append(cb_emb)
@@ -178,17 +187,25 @@ def train_cnn(train_loader, device, epochs=5):
             scaler.update()
             
             epoch_loss += loss.item()
+            
+    cnn.zero_grad(set_to_none=True)
+    del optimizer
+    del temp_classifier
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        
     return cnn
 
 def extract_cnn_features(dataloader, cnn, device, desc):
     cnn.eval()
     cnn_feats = []
     with torch.no_grad():
-        for batch_dicts, _ in tqdm(dataloader, desc=desc, leave=False):
-            for item in batch_dicts:
-                cnn_input = item['cnn_input'].unsqueeze(0).to(device)
-                c_emb = cnn(cnn_input).cpu().numpy().flatten()
-                cnn_feats.append(c_emb)
+        with torch.amp.autocast('cuda', enabled=torch.cuda.is_available()):
+            for batch_dicts, _ in tqdm(dataloader, desc=desc, leave=False):
+                for item in batch_dicts:
+                    cnn_input = item['cnn_input'].unsqueeze(0).to(device)
+                    c_emb = cnn(cnn_input).cpu().numpy().flatten()
+                    cnn_feats.append(c_emb)
     return np.array(cnn_feats)
 
 def objective(trial, X_train, y_train, X_val, y_val):
