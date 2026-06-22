@@ -1,12 +1,12 @@
+import sys, os; sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Subset
 from omniphish.dataset_loader import PhishingDataset, custom_collate
-from omniphish.cnn_model import CNN1DEmbedding
+from omniphish.gnn_model import GNNEmbedding
 from omniphish.transformer_model import CodeBERTEmbedding
 from omniphish.classifier import MetaClassifier
-import os
 import random
 from tqdm import tqdm
 from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, accuracy_score, roc_auc_score, matthews_corrcoef
@@ -91,38 +91,44 @@ def train_codebert_lora(train_loader, codebert, device, epochs=1):
             labels = labels.to(device).unsqueeze(1).float()
             optimizer.zero_grad()
             
-            with torch.amp.autocast('cuda', enabled=torch.cuda.is_available()):
-                batch_embs = []
-                for item in batch_dicts:
-                    # compute_embedding automatically enables gradients for the forward pass
-                    emb = codebert.compute_embedding(item['codebert_text'])
-                    batch_embs.append(emb)
-                    
-                if len(batch_embs) == 0:
-                    continue
-                    
-                batch_embs_tensor = torch.stack(batch_embs)
-                logits = temp_classifier(batch_embs_tensor)
-                loss = criterion(logits, labels)
+            batch_loss = 0.0
+            valid_items = 0
             
-            scaler.scale(loss).backward()
+            for i, item in enumerate(batch_dicts):
+                with torch.amp.autocast('cuda', enabled=torch.cuda.is_available()):
+                    emb = codebert.compute_embedding(item['codebert_text'])
+                    logit = temp_classifier(emb.unsqueeze(0))
+                    loss = criterion(logit, labels[i].unsqueeze(0)) / len(batch_dicts)
+                
+                scaler.scale(loss).backward()
+                batch_loss += loss.item()
+                valid_items += 1
+                
+            if valid_items == 0:
+                continue
+                
             scaler.step(optimizer)
             scaler.update()
             
-            epoch_loss += loss.item()
+            epoch_loss += batch_loss
             
-            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
                 torch.mps.empty_cache()
 
 def global_pre_extract_codebert_heuristics(dataloader, codebert, device):
     """Extracts CodeBERT and Heuristic features for the ENTIRE dataset ONCE (Fast Mode)."""
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
     codebert.eval()
     cb_feats, heuristics, labels_list = [], [], []
     
     with torch.no_grad():
         for batch_dicts, labels in tqdm(dataloader, desc="Global Extraction: CodeBERT & Heuristics"):
             for item, label in zip(batch_dicts, labels):
-                cb_emb = codebert.compute_embedding(item['codebert_text']).cpu().numpy().flatten()
+                with torch.amp.autocast('cuda', enabled=torch.cuda.is_available()):
+                    cb_emb = codebert.compute_embedding(item['codebert_text']).cpu().numpy().flatten()
                 cb_feats.append(cb_emb)
                 
                 # Squeeze the tensor if needed and convert to numpy
@@ -132,45 +138,49 @@ def global_pre_extract_codebert_heuristics(dataloader, codebert, device):
                 
     return np.array(cb_feats), np.array(heuristics), np.array(labels_list)
 
-def extract_all_features(dataloader, cnn, codebert, device, desc):
+def extract_all_features(dataloader, gnn, codebert, device, desc):
     """Extracts all 3 modalities dynamically per-fold (Slow Mode)."""
-    cnn.eval()
+    gnn.eval()
     codebert.eval()
-    cnn_feats, cb_feats, heuristics, labels_list = [], [], [], []
+    gnn_feats, cb_feats, heuristics, labels_list = [], [], [], []
     
     with torch.no_grad():
         for batch_dicts, labels in tqdm(dataloader, desc=desc, leave=False):
             for item, label in zip(batch_dicts, labels):
-                c_emb = cnn(item['cnn_input'].unsqueeze(0).to(device)).cpu().numpy().flatten()
+                gnn_nodes = item['gnn_nodes'].unsqueeze(0).to(device)
+                gnn_adj = item['gnn_adj'].unsqueeze(0).to(device)
+                c_emb = gnn(gnn_nodes, gnn_adj).cpu().numpy().flatten()
                 cb_emb = codebert.compute_embedding(item['codebert_text']).cpu().numpy().flatten()
                 
-                cnn_feats.append(c_emb)
+                gnn_feats.append(c_emb)
                 cb_feats.append(cb_emb)
                 heuristics.append(item['heuristic'].cpu().numpy())
                 labels_list.append(label.item())
                 
-    return np.array(cnn_feats), np.array(cb_feats), np.array(heuristics), np.array(labels_list)
+    return np.array(gnn_feats), np.array(cb_feats), np.array(heuristics), np.array(labels_list)
 
-def train_cnn(train_loader, device, epochs=5):
-    cnn = CNN1DEmbedding(embedding_dim=64, num_filters=128).to(device)
+def train_gnn(train_loader, device, epochs=5):
+    gnn = GNNEmbedding(embedding_dim=64, hidden_dim=64, dropout=0.5).to(device)
     temp_classifier = nn.Linear(128, 1).to(device)
-    optimizer = optim.Adam(list(cnn.parameters()) + list(temp_classifier.parameters()), lr=1e-3)
+    # Applied L2 Regularization (weight_decay) to mitigate overfitting
+    optimizer = optim.Adam(list(gnn.parameters()) + list(temp_classifier.parameters()), lr=1e-3, weight_decay=1e-4)
     criterion = nn.BCEWithLogitsLoss()
     
     scaler = torch.amp.GradScaler('cuda', enabled=torch.cuda.is_available())
     
-    cnn.train()
+    gnn.train()
     for epoch in range(epochs):
         epoch_loss = 0.0
-        for batch_dicts, labels in tqdm(train_loader, desc=f"CNN Epoch {epoch+1}/{epochs}", leave=False):
+        for batch_dicts, labels in tqdm(train_loader, desc=f"GNN Epoch {epoch+1}/{epochs}", leave=False):
             labels = labels.to(device).unsqueeze(1).float()
             optimizer.zero_grad()
             
             with torch.amp.autocast('cuda', enabled=torch.cuda.is_available()):
                 batch_logits = []
                 for item in batch_dicts:
-                    cnn_input = item['cnn_input'].unsqueeze(0).to(device)
-                    batch_logits.append(cnn(cnn_input))
+                    gnn_nodes = item['gnn_nodes'].unsqueeze(0).to(device)
+                    gnn_adj = item['gnn_adj'].unsqueeze(0).to(device)
+                    batch_logits.append(gnn(gnn_nodes, gnn_adj))
                 loss = criterion(temp_classifier(torch.cat(batch_logits, dim=0)), labels)
             
             scaler.scale(loss).backward()
@@ -178,18 +188,19 @@ def train_cnn(train_loader, device, epochs=5):
             scaler.update()
             
             epoch_loss += loss.item()
-    return cnn
+    return gnn
 
-def extract_cnn_features(dataloader, cnn, device, desc):
-    cnn.eval()
-    cnn_feats = []
+def extract_gnn_features(dataloader, gnn, device, desc):
+    gnn.eval()
+    gnn_feats = []
     with torch.no_grad():
         for batch_dicts, _ in tqdm(dataloader, desc=desc, leave=False):
             for item in batch_dicts:
-                cnn_input = item['cnn_input'].unsqueeze(0).to(device)
-                c_emb = cnn(cnn_input).cpu().numpy().flatten()
-                cnn_feats.append(c_emb)
-    return np.array(cnn_feats)
+                gnn_nodes = item['gnn_nodes'].unsqueeze(0).to(device)
+                gnn_adj = item['gnn_adj'].unsqueeze(0).to(device)
+                c_emb = gnn(gnn_nodes, gnn_adj).cpu().numpy().flatten()
+                gnn_feats.append(c_emb)
+    return np.array(gnn_feats)
 
 def objective(trial, X_train, y_train, X_val, y_val):
     xgb_params = {
@@ -237,7 +248,7 @@ def train_model(batch_size=32, n_optuna_trials=10, n_splits=5):
     train_val_labels = all_labels[train_val_idx]
     
     # For global fast extraction, we only want to extract on the train_val dataset
-    train_val_loader = DataLoader(train_val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True)
+    train_val_loader = DataLoader(train_val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=(os.name != 'nt'))
     
     cb_feats, heuristics = None, None
     if mode == "fast":
@@ -245,7 +256,7 @@ def train_model(batch_size=32, n_optuna_trials=10, n_splits=5):
         print("🚀 PHASE 1: GLOBAL CODEBERT PEFT & PRE-EXTRACTION")
         print("="*50)
         codebert = CodeBERTEmbedding(use_lora=True).to(device)
-        train_codebert_lora(DataLoader(train_val_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True), codebert, device, epochs=1)
+        train_codebert_lora(DataLoader(train_val_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=(os.name != 'nt')), codebert, device, epochs=1)
         cb_feats, heuristics, _ = global_pre_extract_codebert_heuristics(train_val_loader, codebert, device)
         
     # Prepare CSV for Variance logging
@@ -271,30 +282,30 @@ def train_model(batch_size=32, n_optuna_trials=10, n_splits=5):
         opt_val_subset = Subset(train_val_dataset, opt_val_idx)
         test_subset = Subset(train_val_dataset, test_idx)
         
-        sub_train_loader_shuffled = DataLoader(sub_train_subset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True)
+        sub_train_loader_shuffled = DataLoader(sub_train_subset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=(os.name != 'nt'))
         
-        # Train CNN strictly on Sub_Train
-        print("[*] Training CNN specifically on Sub_Train (Isolating Optuna Validation)...")
-        cnn = train_cnn(sub_train_loader_shuffled, device, epochs=5)
+        # Train GNN strictly on Sub_Train
+        print("[*] Training GNN specifically on Sub_Train (Isolating Optuna Validation)...")
+        gnn = train_gnn(sub_train_loader_shuffled, device, epochs=5)
         
         if mode == "slow":
             print("[*] Training CodeBERT LoRA specifically on Sub_Train...")
             codebert_fold = CodeBERTEmbedding(use_lora=True).to(device)
             train_codebert_lora(sub_train_loader_shuffled, codebert_fold, device, epochs=1)
             
-            cnn_sub_train, cb_sub_train, h_sub_train, y_sub_train = extract_all_features(DataLoader(sub_train_subset, batch_size=batch_size, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True), cnn, codebert_fold, device, "Extract Sub-Train")
-            cnn_opt_val, cb_opt_val, h_opt_val, y_opt_val = extract_all_features(DataLoader(opt_val_subset, batch_size=batch_size, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True), cnn, codebert_fold, device, "Extract Optuna-Val")
-            cnn_test, cb_test, h_test, y_test = extract_all_features(DataLoader(test_subset, batch_size=batch_size, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True), cnn, codebert_fold, device, "Extract Test")
+            gnn_sub_train, cb_sub_train, h_sub_train, y_sub_train = extract_all_features(DataLoader(sub_train_subset, batch_size=batch_size, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=(os.name != 'nt')), gnn, codebert_fold, device, "Extract Sub-Train")
+            gnn_opt_val, cb_opt_val, h_opt_val, y_opt_val = extract_all_features(DataLoader(opt_val_subset, batch_size=batch_size, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=(os.name != 'nt')), gnn, codebert_fold, device, "Extract Optuna-Val")
+            gnn_test, cb_test, h_test, y_test = extract_all_features(DataLoader(test_subset, batch_size=batch_size, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=(os.name != 'nt')), gnn, codebert_fold, device, "Extract Test")
             
-            X_sub_train = np.concatenate([cnn_sub_train, cb_sub_train, h_sub_train], axis=1)
-            X_opt_val = np.concatenate([cnn_opt_val, cb_opt_val, h_opt_val], axis=1)
-            X_test = np.concatenate([cnn_test, cb_test, h_test], axis=1)
+            X_sub_train = np.concatenate([gnn_sub_train, cb_sub_train, h_sub_train], axis=1)
+            X_opt_val = np.concatenate([gnn_opt_val, cb_opt_val, h_opt_val], axis=1)
+            X_test = np.concatenate([gnn_test, cb_test, h_test], axis=1)
             
         else:
-            # Fast Mode: Extract only CNN, grab CodeBERT from global cache
-            cnn_sub_train = extract_cnn_features(DataLoader(sub_train_subset, batch_size=batch_size, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True), cnn, device, "Extract CNN Sub-Train")
-            cnn_opt_val = extract_cnn_features(DataLoader(opt_val_subset, batch_size=batch_size, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True), cnn, device, "Extract CNN Optuna-Val")
-            cnn_test = extract_cnn_features(DataLoader(test_subset, batch_size=batch_size, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True), cnn, device, "Extract CNN Test")
+            # Fast Mode: Extract only GNN, grab CodeBERT from global cache
+            gnn_sub_train = extract_gnn_features(DataLoader(sub_train_subset, batch_size=batch_size, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=(os.name != 'nt')), gnn, device, "Extract GNN Sub-Train")
+            gnn_opt_val = extract_gnn_features(DataLoader(opt_val_subset, batch_size=batch_size, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=(os.name != 'nt')), gnn, device, "Extract GNN Optuna-Val")
+            gnn_test = extract_gnn_features(DataLoader(test_subset, batch_size=batch_size, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=(os.name != 'nt')), gnn, device, "Extract GNN Test")
             
             # Heuristics array could be 1D or 2D, safely reshape
             h_sub = heuristics[sub_train_idx]
@@ -305,13 +316,13 @@ def train_model(batch_size=32, n_optuna_trials=10, n_splits=5):
                 h_opt = h_opt.reshape(-1, 1)
                 h_tst = h_tst.reshape(-1, 1)
                 
-            X_sub_train = np.concatenate([cnn_sub_train, cb_feats[sub_train_idx], h_sub], axis=1)
+            X_sub_train = np.concatenate([gnn_sub_train, cb_feats[sub_train_idx], h_sub], axis=1)
             y_sub_train = train_val_labels[sub_train_idx]
             
-            X_opt_val = np.concatenate([cnn_opt_val, cb_feats[opt_val_idx], h_opt], axis=1)
+            X_opt_val = np.concatenate([gnn_opt_val, cb_feats[opt_val_idx], h_opt], axis=1)
             y_opt_val = train_val_labels[opt_val_idx]
             
-            X_test = np.concatenate([cnn_test, cb_feats[test_idx], h_tst], axis=1)
+            X_test = np.concatenate([gnn_test, cb_feats[test_idx], h_tst], axis=1)
             y_test = train_val_labels[test_idx]
             
         # Re-combine Sub_Train and Opt_Val into Full Fold Train for final evaluation
@@ -358,11 +369,14 @@ def train_model(batch_size=32, n_optuna_trials=10, n_splits=5):
         if fold == n_splits - 1:
             os.makedirs("weights", exist_ok=True)
             meta.save("weights/meta_classifier.pkl")
-            torch.save(cnn.state_dict(), "weights/cnn_trained.pt")
+            torch.save(gnn.state_dict(), "weights/gnn_trained.pt")
             if mode == "slow":
                 torch.save(codebert_fold.state_dict(), "weights/codebert_trained.pt")
             else:
                 torch.save(codebert.state_dict(), "weights/codebert_trained.pt")
+            import pickle
+            with open("weights/scaler.pkl", "wb") as f:
+                pickle.dump(scaler, f)
                 
         # Evaluate on Validation (Test Fold)
         preds_val = [meta.predict(x) for x in X_test_scaled_final]

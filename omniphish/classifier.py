@@ -26,7 +26,6 @@ class MetaClassifier:
             'eval_metric': 'logloss',
             'n_jobs': -1 if torch.cuda.is_available() else 1,  # Max out threads on PC, prevent segfault on Mac
             'tree_method': 'hist',
-            'device': 'cuda' if torch.cuda.is_available() else 'cpu'
         }
         
         if xgb_params is not None:
@@ -71,6 +70,11 @@ class MetaClassifier:
         """
         X = np.array(X)
         y = np.array(y)
+        
+        # Prevent "mismatched devices" DMatrix fallback warning
+        # Since X is a numpy array (CPU bound), force XGBoost to run on CPU or explicitly transfer.
+        # Given Optuna runs many small tree fits rapidly, keeping it on CPU actually prevents PCIe transfer bottlenecks for XGBoost.
+        self.xgb_model.set_params(device='cpu')
         
         print(f"[MetaClassifier] Training XGBoost on {X.shape[0]} samples with {X.shape[1]} features...")
         self.xgb_model.fit(X, y)

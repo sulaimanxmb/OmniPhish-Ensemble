@@ -1,3 +1,4 @@
+import sys, os; sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 import os
 import numpy as np
 import pandas as pd
@@ -6,12 +7,12 @@ import time
 import psutil
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.metrics import classification_report, confusion_matrix, precision_score, recall_score, f1_score, accuracy_score
+from sklearn.metrics import classification_report, confusion_matrix, precision_score, recall_score, f1_score, accuracy_score, roc_auc_score, matthews_corrcoef
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
 from omniphish.dataset_loader import PhishingDataset, custom_collate
-from omniphish.cnn_model import CNN1DEmbedding
+from omniphish.gnn_model import GNNEmbedding
 from omniphish.transformer_model import CodeBERTEmbedding
 from omniphish.classifier import MetaClassifier
 
@@ -74,13 +75,13 @@ def test_zero_day_vault():
     
     # 1. Load Models
     print("[*] Loading trained Neural Networks and Meta-Classifier...")
-    cnn = CNN1DEmbedding(embedding_dim=64, num_filters=128).to(device)
+    gnn = GNNEmbedding(embedding_dim=64, hidden_dim=64, dropout=0.5).to(device)
     try:
-        cnn.load_state_dict(torch.load("weights/cnn_trained.pt", map_location=device))
+        gnn.load_state_dict(torch.load("weights/gnn_trained.pt", map_location=device))
     except Exception as e:
-        print(f"[!] Failed to load CNN weights: {e}")
+        print(f"[!] Failed to load GNN weights: {e}")
         return
-    cnn.eval()
+    gnn.eval()
     
     codebert = CodeBERTEmbedding(use_lora=True).to(device)
     try:
@@ -99,22 +100,24 @@ def test_zero_day_vault():
         
     # 2. Extract Features
     print("[*] Extracting Structural & Semantic features for Vault data...")
-    cnn_feats, cb_feats, heuristics, labels_list = [], [], [], []
+    gnn_feats, cb_feats, heuristics, labels_list = [], [], [], []
     
     start_time = time.time()
     
     with torch.no_grad():
         for batch_dicts, labels in tqdm(vault_loader, desc="Vault Extraction"):
             for item, label in zip(batch_dicts, labels):
-                c_emb = cnn(item['cnn_input'].unsqueeze(0).to(device)).cpu().numpy().flatten()
+                gnn_nodes = item['gnn_nodes'].unsqueeze(0).to(device)
+                gnn_adj = item['gnn_adj'].unsqueeze(0).to(device)
+                c_emb = gnn(gnn_nodes, gnn_adj).cpu().numpy().flatten()
                 cb_emb = codebert.compute_embedding(item['codebert_text']).cpu().numpy().flatten()
                 
-                cnn_feats.append(c_emb)
+                gnn_feats.append(c_emb)
                 cb_feats.append(cb_emb)
                 heuristics.append(item['heuristic'].cpu().numpy())
                 labels_list.append(label.item())
                 
-    cnn_feats = np.array(cnn_feats)
+    gnn_feats = np.array(gnn_feats)
     cb_feats = np.array(cb_feats)
     heuristics = np.array(heuristics)
     y_true = np.array(labels_list)
@@ -123,11 +126,21 @@ def test_zero_day_vault():
     if len(heuristics.shape) == 1:
         heuristics = heuristics.reshape(-1, 1)
         
-    X_vault = np.concatenate([cnn_feats, cb_feats, heuristics], axis=1)
+    X_vault = np.concatenate([gnn_feats, cb_feats, heuristics], axis=1)
     
     # 3. Predict & Evaluate
+    print("[*] Applying Distance Normalization (Standard Scaling)...")
+    import pickle
+    try:
+        with open("weights/scaler.pkl", "rb") as f:
+            scaler = pickle.load(f)
+        X_vault = scaler.transform(X_vault)
+    except Exception as e:
+        print(f"[!] Failed to load StandardScaler: {e}")
+        
     print("[*] Running XGBoost Meta-Classifier on Vault features...")
     y_pred = [meta.predict(x) for x in X_vault]
+    y_probs = [meta.predict_proba(x) for x in X_vault]
     
     end_time = time.time()
     
@@ -143,6 +156,12 @@ def test_zero_day_vault():
     rec = recall_score(y_true, y_pred, zero_division=0) * 100
     f1 = f1_score(y_true, y_pred, zero_division=0) * 100
     
+    auc = roc_auc_score(y_true, y_probs)
+    mcc = matthews_corrcoef(y_true, y_pred)
+    cm_eval = confusion_matrix(y_true, y_pred)
+    tn, fp, fn, tp = cm_eval.ravel()
+    fpr = (fp / (fp + tn) * 100) if (fp + tn) > 0 else 0.0
+    
     print("\n" + "="*40)
     print("🏆 FINAL ZERO-DAY VAULT METRICS 🏆")
     print("="*40)
@@ -150,6 +169,9 @@ def test_zero_day_vault():
     print(f"Precision: {prec:.2f}%")
     print(f"Recall:    {rec:.2f}%")
     print(f"F1-Score:  {f1:.2f}%")
+    print(f"ROC-AUC:   {auc:.4f}")
+    print(f"MCC:       {mcc:.4f}")
+    print(f"FPR:       {fpr:.2f}%")
     print("-" * 40)
     print(f"Latency:   {ms_per_url:.2f} ms per URL")
     print(f"Peak RAM:  {peak_ram_mb:.2f} MB")

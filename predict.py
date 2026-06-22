@@ -6,12 +6,12 @@ import numpy as np
 from playwright.async_api import async_playwright
 
 from omniphish.html_parser import clean_html, extract_codebert_tags
-from omniphish.cnn_model import CNN1DEmbedding, text_to_tensor
+from omniphish.gnn_model import GNNEmbedding
 from omniphish.transformer_model import CodeBERTEmbedding
 from omniphish.classifier import MetaClassifier
 from dataset_generator.phish_scraper import check_login_heuristics
 from omniphish.url_heuristics import is_suspicious_action
-from omniphish.dataset_loader import get_dom_depth_stats
+from omniphish.dataset_loader import get_dom_depth_stats, extract_dom_graph
 from bs4 import BeautifulSoup
 
 async def fetch_html(url):
@@ -59,18 +59,18 @@ def predict(url):
     device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     
     # Load Models Structure
-    cnn = CNN1DEmbedding().to(device)
+    gnn = GNNEmbedding(embedding_dim=64, hidden_dim=64, dropout=0.5).to(device)
     codebert = CodeBERTEmbedding().to(device)
     
     # Validate Model Loaders
-    if not os.path.exists("weights/cnn_trained.pt") or not os.path.exists("weights/meta_classifier.pkl"):
+    if not os.path.exists("weights/gnn_trained.pt") or not os.path.exists("weights/meta_classifier.pkl"):
         print("Error: Models have not been trained yet. Please run trainer.py locally first.")
         return
         
     # Map strict PyTorch states from Disk into Models
-    cnn.load_state_dict(torch.load("weights/cnn_trained.pt", map_location=device))
+    gnn.load_state_dict(torch.load("weights/gnn_trained.pt", map_location=device))
     
-    cnn.eval()
+    gnn.eval()
     codebert.eval()
     
     # Re-instantiate final evaluator XGBoost ensemble limit
@@ -79,12 +79,14 @@ def predict(url):
     
     # Execute Model Pipelines Dynamically
     with torch.no_grad():
-        cnn_input = text_to_tensor(cleaned_html, max_len=1024).to(device)
+        gnn_nodes, gnn_adj = extract_dom_graph(soup, max_nodes=1024)
+        gnn_nodes = gnn_nodes.unsqueeze(0).to(device)
+        gnn_adj = gnn_adj.unsqueeze(0).to(device)
         
-        cnn_emb = cnn(cnn_input)
-        cb_emb = codebert.compute_embedding(codebert_text)
+        c_emb = gnn(gnn_nodes, gnn_adj).cpu().numpy().flatten()
+        cb_emb = codebert.compute_embedding(codebert_text).cpu().numpy().flatten()
         
-        concat_vector = meta_clf.concatenate_features(cnn_emb, cb_emb, heuristic_val)
+        concat_vector = meta_clf.concatenate_features(c_emb, cb_emb, heuristic_val)
         
     prediction = meta_clf.predict(concat_vector)
     prob = meta_clf.predict_proba(concat_vector)
@@ -101,7 +103,7 @@ def predict(url):
         if prob > 0.90:
             print("  [CRITICAL] High-Confidence Phishing Kit Detected.")
             print("  • CodeBERT (Semantic): Detected obfuscated JavaScript logic or aggressive credential routing commonly used by phishing actors.")
-            print("  • CNN1D (Structural): The HTML tag layout perfectly matches known malicious templates, despite any visual CSS masking.")
+            print("  • GNN (Structural): The HTML tag layout perfectly matches known malicious templates, despite any visual CSS masking.")
             if suspicious_form_action:
                 print("  • Heuristics (Routing): Detected a highly suspicious <form action> routing credentials to a malicious/external drop zone!")
         elif prob > 0.70:
@@ -119,7 +121,7 @@ def predict(url):
         
         if (1 - prob) > 0.90:
             print("  [VERIFIED] Enterprise-Grade Structure.")
-            print("  • CNN1D (Structural): The DOM complexity, inline scripting, and tag distribution match legitimate enterprise single-page applications.")
+            print("  • GNN (Structural): The DOM complexity, inline scripting, and tag distribution match legitimate enterprise single-page applications.")
             print("  • CodeBERT (Semantic): The form routing and Javascript event listeners appear standard and safe.")
         else:
             print("  [SAFE] Standard Login Detected.")

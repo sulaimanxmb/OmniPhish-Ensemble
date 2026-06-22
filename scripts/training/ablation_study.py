@@ -1,3 +1,4 @@
+import sys, os; sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 import os
 import numpy as np
 import xgboost as xgb
@@ -8,20 +9,20 @@ from imblearn.over_sampling import SMOTE
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, roc_auc_score, matthews_corrcoef
 
 from omniphish.dataset_loader import PhishingDataset, custom_collate
-from omniphish.cnn_model import CNN1DEmbedding
+from omniphish.gnn_model import GNNEmbedding
 from omniphish.transformer_model import CodeBERTEmbedding
 
 def extract_global_features():
     print("[*] Loading trained Neural Networks...")
     device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     
-    cnn = CNN1DEmbedding(embedding_dim=64, num_filters=128).to(device)
+    gnn = GNNEmbedding(embedding_dim=64, hidden_dim=64, dropout=0.5).to(device)
     try:
-        cnn.load_state_dict(torch.load("weights/cnn_trained.pt", map_location=device))
+        gnn.load_state_dict(torch.load("weights/gnn_trained.pt", map_location=device))
     except Exception as e:
-        print(f"[!] Failed to load CNN weights. Please run trainer.py first! Error: {e}")
+        print(f"[!] Failed to load GNN weights. Please run trainer.py first! Error: {e}")
         return None, None, None, None
-    cnn.eval()
+    gnn.eval()
     
     codebert = CodeBERTEmbedding(use_lora=True).to(device)
     try:
@@ -40,21 +41,23 @@ def extract_global_features():
         
     dataloader = DataLoader(dataset, batch_size=32, shuffle=False, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True)
     
-    cnn_feats, cb_feats, heuristics, labels_list = [], [], [], []
+    gnn_feats, cb_feats, heuristics, labels_list = [], [], [], []
     
     print(f"[*] Dynamically Extracting Deep Learning features for {len(dataset)} files...")
     with torch.no_grad():
         for batch_dicts, labels in tqdm(dataloader, desc="Ablation Extraction"):
             for item, label in zip(batch_dicts, labels):
-                c_emb = cnn(item['cnn_input'].unsqueeze(0).to(device)).cpu().numpy().flatten()
+                gnn_nodes = item['gnn_nodes'].unsqueeze(0).to(device)
+                gnn_adj = item['gnn_adj'].unsqueeze(0).to(device)
+                c_emb = gnn(gnn_nodes, gnn_adj).cpu().numpy().flatten()
                 cb_emb = codebert.compute_embedding(item['codebert_text']).cpu().numpy().flatten()
                 
-                cnn_feats.append(c_emb)
+                gnn_feats.append(c_emb)
                 cb_feats.append(cb_emb)
                 heuristics.append(item['heuristic'].cpu().numpy())
                 labels_list.append(label.item())
                 
-    cnn_feats = np.array(cnn_feats)
+    gnn_feats = np.array(gnn_feats)
     cb_feats = np.array(cb_feats)
     heuristics = np.array(heuristics)
     y_true = np.array(labels_list)
@@ -62,7 +65,7 @@ def extract_global_features():
     if len(heuristics.shape) == 1:
         heuristics = heuristics.reshape(-1, 1)
         
-    return cnn_feats, cb_feats, heuristics, y_true
+    return gnn_feats, cb_feats, heuristics, y_true
 
 def run_ablation_test(test_name, X, y, test_idx):
     print("="*60)
@@ -112,12 +115,17 @@ def run_ablation_test(test_name, X, y, test_idx):
     except:
         auc = 0.0
     mcc = matthews_corrcoef(y_test, all_preds)
+    cm = confusion_matrix(y_test, all_preds)
+    tn, fp, fn, tp = cm.ravel()
+    fpr = (fp / (fp + tn) * 100) if (fp + tn) > 0 else 0.0
     
-    print(f"    --> F1-Score:  {f1*100:.2f}%")
-    print(f"    --> Precision: {prec*100:.2f}%")
-    print(f"    --> Recall:    {rec*100:.2f}%")
-    print(f"    --> ROC-AUC:   {auc:.4f}")
-    print(f"    --> MCC:       {mcc:.4f}")
+    print(f"Accuracy:  {acc*100:.2f}%")
+    print(f"Precision: {prec*100:.2f}%")
+    print(f"Recall:    {rec*100:.2f}%")
+    print(f"F1-Score:  {f1*100:.2f}%")
+    print(f"ROC-AUC:   {auc:.4f}")
+    print(f"MCC:       {mcc:.4f}")
+    print(f"FPR:       {fpr:.2f}%")
     print("="*60 + "\n")
     
     return {
@@ -138,32 +146,32 @@ def main():
     test_idx = np.load("weights/vault_indices.npy")
     
     # Dynamically extract features since trainer.py doesn't cache them globally
-    X_cnn, X_codebert, X_heuristics, y_all = extract_global_features()
-    if X_cnn is None:
+    X_gnn, X_codebert, X_heuristics, y_all = extract_global_features()
+    if X_gnn is None:
         return
         
     print("\n[+] All vectors extracted successfully. Beginning mathematically isolated tests...\n")
     
     results = []
     
-    # Test 1: No CodeBERT (CNN + Heuristics)
-    X_test1 = np.hstack((X_cnn, X_heuristics))
-    results.append(run_ablation_test("No CodeBERT (CNN + Heuristics)", X_test1, y_all, test_idx))
+    # Test 1: No CodeBERT (GNN + Heuristics)
+    X_test1 = np.hstack((X_gnn, X_heuristics))
+    results.append(run_ablation_test("No CodeBERT (GNN + Heuristics)", X_test1, y_all, test_idx))
     
-    # Test 2: No CNN (CodeBERT + Heuristics)
+    # Test 2: No GNN (CodeBERT + Heuristics)
     X_test2 = np.hstack((X_codebert, X_heuristics))
-    results.append(run_ablation_test("No CNN (CodeBERT + Heuristics)", X_test2, y_all, test_idx))
+    results.append(run_ablation_test("No GNN (CodeBERT + Heuristics)", X_test2, y_all, test_idx))
     
-    # Test 3: No Heuristics (CodeBERT + CNN)
-    X_test3 = np.hstack((X_cnn, X_codebert))
-    results.append(run_ablation_test("No Heuristics (CodeBERT + CNN)", X_test3, y_all, test_idx))
+    # Test 3: No Heuristics (CodeBERT + GNN)
+    X_test3 = np.hstack((X_gnn, X_codebert))
+    results.append(run_ablation_test("No Heuristics (CodeBERT + GNN)", X_test3, y_all, test_idx))
     
     # Test 4: Heuristics Only
     X_test4 = X_heuristics
     results.append(run_ablation_test("Heuristics Only (No Deep Learning)", X_test4, y_all, test_idx))
     
     # Test 5: Full Tri-Modal Ensemble
-    X_test5 = np.hstack((X_cnn, X_codebert, X_heuristics))
+    X_test5 = np.hstack((X_gnn, X_codebert, X_heuristics))
     results.append(run_ablation_test("FULL ENSEMBLE (All 903 Dimensions)", X_test5, y_all, test_idx))
     
     # Print Final Summary Table

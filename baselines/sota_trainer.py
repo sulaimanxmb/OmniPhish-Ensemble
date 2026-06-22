@@ -129,7 +129,7 @@ def train_sota():
     print(f"F1-Score:  {f1*100:.2f}%")
     print(f"ROC-AUC:   {auc:.4f}")
     print(f"MCC:       {mcc:.4f}")
-    print(f"FPR (False Positive Rate): {fpr*100:.2f}%")
+    print(f"FPR:       {fpr*100:.2f}%")
     print("\nConfusion Matrix:")
     print(f"True Negatives (Correctly Safe):   {cm[0][0]}")
     print(f"False Positives (Mistake blocked): {cm[0][1]}")

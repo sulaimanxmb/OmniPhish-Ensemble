@@ -1,3 +1,4 @@
+import sys, os; sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 import os
 import random
 import numpy as np
@@ -32,12 +33,12 @@ def save_visualization(filename):
     print(f"  [+] Saved '{filepath}'")
 
 from omniphish.dataset_loader import PhishingDataset, custom_collate
-from omniphish.cnn_model import CNN1DEmbedding
+from omniphish.gnn_model import GNNEmbedding
 from omniphish.transformer_model import CodeBERTEmbedding
 from omniphish.classifier import MetaClassifier
 
 def get_feature_names():
-    return [f"CNN_Feat_{i}" for i in range(128)] + \
+    return [f"GNN_Feat_{i}" for i in range(128)] + \
            [f"CodeBERT_Feat_{i}" for i in range(768)] + \
            ["Heur_DOM_Depth", "Heur_Suspicious_Action", "Heur_URL_Score"]
 
@@ -76,29 +77,31 @@ def generate_smote_pca():
     imbalanced_subset = Subset(dataset, imbalanced_idx)
     loader = DataLoader(imbalanced_subset, batch_size=32, shuffle=False, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True)
     
-    cnn = CNN1DEmbedding(embedding_dim=64, num_filters=128).to(device)
-    cnn.load_state_dict(torch.load("weights/cnn_trained.pt", map_location=device))
-    cnn.eval()
+    gnn = GNNEmbedding(embedding_dim=64, hidden_dim=64, dropout=0.5).to(device)
+    gnn.load_state_dict(torch.load("weights/gnn_trained.pt", map_location=device))
+    gnn.eval()
     
     codebert = CodeBERTEmbedding(use_lora=True).to(device)
     codebert.load_state_dict(torch.load("weights/codebert_trained.pt", map_location=device))
     codebert.eval()
     
     print(f"[*] Extracting Mathematical Embeddings for {len(imbalanced_idx)} highly imbalanced samples...")
-    cnn_feats, cb_feats, heuristics, labels_list = [], [], [], []
+    gnn_feats, cb_feats, heuristics, labels_list = [], [], [], []
     
     with torch.no_grad():
         for batch_dicts, labels in tqdm(loader, desc="SMOTE Extraction"):
             for item, label in zip(batch_dicts, labels):
-                c_emb = cnn(item['cnn_input'].unsqueeze(0).to(device)).cpu().numpy().flatten()
+                gnn_nodes = item['gnn_nodes'].unsqueeze(0).to(device)
+                gnn_adj = item['gnn_adj'].unsqueeze(0).to(device)
+                c_emb = gnn(gnn_nodes, gnn_adj).cpu().numpy().flatten()
                 cb_emb = codebert.compute_embedding(item['codebert_text']).cpu().numpy().flatten()
                 
-                cnn_feats.append(c_emb)
+                gnn_feats.append(c_emb)
                 cb_feats.append(cb_emb)
                 heuristics.append(item['heuristic'].cpu().numpy())
                 labels_list.append(label.item())
                 
-    cnn_feats = np.array(cnn_feats)
+    gnn_feats = np.array(gnn_feats)
     cb_feats = np.array(cb_feats)
     heuristics = np.array(heuristics)
     y_true = np.array(labels_list, dtype=int)
@@ -106,7 +109,7 @@ def generate_smote_pca():
     if len(heuristics.shape) == 1:
         heuristics = heuristics.reshape(-1, 1)
         
-    X_imbalanced = np.concatenate([cnn_feats, cb_feats, heuristics], axis=1)
+    X_imbalanced = np.concatenate([gnn_feats, cb_feats, heuristics], axis=1)
     
     # Apply distance normalisation
     scaler = StandardScaler()
@@ -163,9 +166,9 @@ def generate_inference_based_graphs(choices):
     vault_loader = DataLoader(vault_subset, batch_size=32, shuffle=False, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True)
     
     print("[*] Loading Neural Networks...")
-    cnn = CNN1DEmbedding(embedding_dim=64, num_filters=128).to(device)
-    cnn.load_state_dict(torch.load("weights/cnn_trained.pt", map_location=device))
-    cnn.eval()
+    gnn = GNNEmbedding(embedding_dim=64, hidden_dim=64, dropout=0.5).to(device)
+    gnn.load_state_dict(torch.load("weights/gnn_trained.pt", map_location=device))
+    gnn.eval()
     
     codebert = CodeBERTEmbedding(use_lora=True).to(device)
     codebert.load_state_dict(torch.load("weights/codebert_trained.pt", map_location=device))
@@ -175,20 +178,22 @@ def generate_inference_based_graphs(choices):
     meta.load("weights/meta_classifier.pkl")
     
     print("[*] Performing Forward Pass (Extracting 899-D Mathematical Embeddings)...")
-    cnn_feats, cb_feats, heuristics, labels_list = [], [], [], []
+    gnn_feats, cb_feats, heuristics, labels_list = [], [], [], []
     
     with torch.no_grad():
         for batch_dicts, labels in tqdm(vault_loader, desc="Inference Extraction"):
             for item, label in zip(batch_dicts, labels):
-                c_emb = cnn(item['cnn_input'].unsqueeze(0).to(device)).cpu().numpy().flatten()
+                gnn_nodes = item['gnn_nodes'].unsqueeze(0).to(device)
+                gnn_adj = item['gnn_adj'].unsqueeze(0).to(device)
+                c_emb = gnn(gnn_nodes, gnn_adj).cpu().numpy().flatten()
                 cb_emb = codebert.compute_embedding(item['codebert_text']).cpu().numpy().flatten()
                 
-                cnn_feats.append(c_emb)
+                gnn_feats.append(c_emb)
                 cb_feats.append(cb_emb)
                 heuristics.append(item['heuristic'].cpu().numpy())
                 labels_list.append(label.item())
                 
-    cnn_feats = np.array(cnn_feats)
+    gnn_feats = np.array(gnn_feats)
     cb_feats = np.array(cb_feats)
     heuristics = np.array(heuristics)
     y_true = np.array(labels_list, dtype=int)
@@ -196,7 +201,7 @@ def generate_inference_based_graphs(choices):
     if len(heuristics.shape) == 1:
         heuristics = heuristics.reshape(-1, 1)
         
-    X_vault = np.concatenate([cnn_feats, cb_feats, heuristics], axis=1)
+    X_vault = np.concatenate([gnn_feats, cb_feats, heuristics], axis=1)
     
     print("[*] Generating XGBoost Predictions...")
     y_pred = [meta.predict(x) for x in X_vault]

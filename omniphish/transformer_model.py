@@ -61,17 +61,27 @@ class CodeBERTEmbedding(nn.Module):
         max_chars_needed = max_chunks * chunk_size * 5
         text = text[:max_chars_needed]
         
-        # Suppress the max length warning by temporarily changing logging level, 
-        # or we just let it warn once. It's harmless since we chunk manually.
-        inputs = self.tokenizer(
-            text, 
-            return_tensors="pt", 
-            truncation=False, 
-            add_special_tokens=False 
-        )
+        # Fast Tokenization Hack to prevent O(N^2) slowdown on pure-Python tokenizer fallbacks
+        chunk_size_chars = 2500
+        input_ids_list = []
+        attention_mask_list = []
         
-        input_ids = inputs["input_ids"][0]
-        attention_mask = inputs["attention_mask"][0]
+        if len(text) == 0:
+            text = " "
+            
+        for i in range(0, len(text), chunk_size_chars):
+            sub_text = text[i:i+chunk_size_chars]
+            inputs = self.tokenizer(
+                sub_text, 
+                return_tensors="pt", 
+                truncation=False, 
+                add_special_tokens=False 
+            )
+            input_ids_list.append(inputs["input_ids"][0])
+            attention_mask_list.append(inputs["attention_mask"][0])
+            
+        input_ids = torch.cat(input_ids_list)
+        attention_mask = torch.cat(attention_mask_list)
         
         device = next(self.codebert.parameters()).device
         embeddings = []
