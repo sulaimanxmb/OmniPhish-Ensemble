@@ -1,3 +1,4 @@
+import sys, os; sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 import os
 import numpy as np
 import pandas as pd
@@ -166,8 +167,9 @@ def test_zero_day_vault():
                 yticklabels=['Actual Benign', 'Actual Phishing'])
     plt.title('Zero-Day Vault Confusion Matrix')
     plt.tight_layout()
-    plt.savefig('vault_confusion_matrix.png', dpi=300)
-    print("\n[+] Saved 'vault_confusion_matrix.png' for IEEE paper.")
+    os.makedirs('visualizations', exist_ok=True)
+    plt.savefig('visualizations/vault_confusion_matrix.png', dpi=300)
+    print("\n[+] Saved 'visualizations/vault_confusion_matrix.png' for IEEE paper.")
 
 if __name__ == "__main__":
     if analyze_kfold_variance():
