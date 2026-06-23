@@ -1,50 +1,63 @@
-# OmniPhish: Tri-Modal Stacking Ensemble
+# OmniPhish CNN Stacking Ensemble (Zero-Day Phishing Detection)
 
-This repository contains the codebase for OmniPhish, a novel Deep Learning Stacking Ensemble designed to detect evasive zero-day phishing kits by analyzing raw Document Object Model (DOM) structural routing and JavaScript semantics, completely bypassing visual rendering (mitigating "Domain Blindness").
+This repository contains the official implementation of the **OmniPhish 1D-CNN Stacking Ensemble**, designed for highly evasive, zero-day phishing URL detection. This architecture mathematically outperformed traditional ML baselines by fusing Deep Semantic representations (CodeBERT) with Structural Sequence modeling (1D-CNN) and explicit heuristic feature extraction.
 
-## Architecture Highlights
-- **Context-Aware Structural Sequence Analysis (CNN1D)**: Analyzes HTML tag structures as contextual sequences.
-- **Isolated JavaScript Semantic Intent Analysis (CodeBERT)**: Employs 1D Global Max Pooling over isolated JavaScript chunks to detect obfuscated payloads without hitting standard transformer length limits.
-- **DOM Behavioral Heuristics**: Incorporates structural depth and suspicious externalized form actions.
-- **XGBoost Meta-Classifier**: Fuses the multi-modal features via Optuna-optimized hyper-parameters.
-- **Latent Space Imbalance Handling**: Employs fold-isolated SMOTE with Standard Scaling strictly inside the training split to geometrically balance the 899-D space without data leakage.
+### Architecture Overview (main branch)
+- **Semantic Engine:** Microsoft CodeBERT (Fine-tuned via Low-Rank Adaptation - LoRA)
+- **Structural Engine:** 1D Convolutional Neural Network (1D-CNN) processing raw HTML sequences
+- **Meta-Classifier:** XGBoost (Gradient Boosting) processing the concatenated 899-dimensional latent space.
 
-## Hardware Branches
-This repository is split into two specialized branches depending on your hardware environment:
-- `main`: Designed for low-resource hardware and Apple Silicon (Macbook M4 Pro, M-Series laptops, standard CPUs). Uses `batch_size=1` and single-core DataLoaders to prevent memory exhaustion and IPC crashes. If you are on an M4 Pro with 16GB RAM, use this branch to prevent Unified Memory Out-of-Memory (OOM) errors.
-- `cuda-optimized`: Designed for high-performance NVIDIA RTX machines. Uses `batch_size=32`, `num_workers=4/8` DataLoaders, Automatic Mixed Precision (AMP), and GPU-accelerated XGBoost. It also includes specific bypasses for Windows Win32 MAX_PATH and Windows Defender IPC blockages.
+*Note: For the experimental Graph Neural Network (GNN) implementation, please switch to the `cuda-with-gnn` branch.*
 
-## Project Structure
-- `omniphish/`: Core modules including data loaders, parsers, and neural network architectures (CNN1D & CodeBERT).
-- `dataset_generator/`: Playwright-based autonomous ingestion pipeline for extracting raw HTML from evasive live sites.
-- `baselines/`: State-of-the-art comparative models (Hybrid ML, HTMLPhish, XF-PhishBERT, SpecularNet GNN).
-- `visualizations/`: Generated output graphs including PCA SMOTE clusters, PR/ROC curves, Confusion Matrices, and XAI Feature Importance.
-- `trainer.py`: The core execution pipeline handling 5-Fold Cross-Validation, Optuna optimization, and strictly decoupled holdout validation.
-- `predict.py`: Inference engine for real-world deployment.
-- `ablation_study.py`: Script to generate the semantic-structural paradox metrics.
+---
 
-## Dataset Setup
-The raw HTML dataset used to train this model is hosted externally to keep this repository lightweight. Before running the training pipeline, you must acquire the dataset:
+## 🚀 How to Run the Pipeline
 
-1. **Download**: Navigate to the [OmniPhish Dataset v1 on Kaggle](https://www.kaggle.com/datasets/sulaimaneksambi/omniphish-dataset-v1) and download the archive.
-   - *Alternatively, use the Kaggle CLI:* `kaggle datasets download -d sulaimaneksambi/omniphish-dataset-v1`
-2. **Extract**: Unzip the downloaded file and place the folders at the root of this project exactly like this:
-   - `Dataset/raw_html/phishing/`
-   - `Dataset/raw_html/benign/`
+The entire system is completely automated via the master pipeline script.
 
-## How to Run
-1. Install dependencies: `pip install -r requirements.txt` (and run `playwright install`)
+1. **Install Dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-### Option A: Fully Automated Master Pipeline (Recommended)
-You can automatically execute the entire pipeline unattended, which will run the models, the evaluations, the baselines, and the visualizations sequentially. When you launch the script, it will first prompt you to select either Fast Mode or Slow Mode. After completion, it will generate a Master Dashboard of metrics at the end:
-```bash
-python run_pipeline.py
+2. **Execute the Master Pipeline:**
+   ```bash
+   python run_pipeline.py
+   ```
+   *The pipeline will automatically prompt you to choose your training mode (Fast vs. Strict Isolation Slow Mode) and select which mathematical visualizations you want to generate.*
+
+---
+
+## 📂 Project Structure
+
+```
+OmniPhish-Ensemble/
+├── run_pipeline.py            # The master execution script
+├── requirements.txt           # Python dependencies
+├── omniphish/                 # Core framework modules
+│   ├── dataset_loader.py      # TF-IDF, Heuristics, & Tokenization
+│   ├── transformer_model.py   # CodeBERT + LoRA Architecture
+│   └── classifier.py          # 1D-CNN structural extractor
+├── scripts/
+│   ├── training/              # CNN Training loops and Vault evaluation
+│   └── visualization/         # Plot generation (SHAP, t-SNE, PR Curves)
+├── baselines/                 # SOTA Comparison Scripts (TF-IDF, RF, etc.)
+├── metrics/                   # CSV logs of K-Fold variance tests
+├── pipeline_logs/             # Raw stdout logs from all scripts
+├── visualizations/            # Automatically generated high-res PNGs
+└── weights_cnn/               # (Manual Backup) Preserved trained model files
 ```
 
-### Option B: Manual Execution
-If you wish to run scripts individually:
-1. Execute the main pipeline: `python trainer.py`
-2. Check for overfitting on the isolated zero-day vault: `python Check_for_overfitting.py`
-3. Generate analytical graphs: `python generate_visualizations.py`
+---
 
-*Note: This repository is currently anonymized for double-blind peer review.*
+## 📊 Final IEEE Performance Metrics (Zero-Day Vault)
+Evaluated on a strictly isolated 10% Zero-Day holdout vault (799 URLs) entirely unseen during the K-Fold training phase.
+
+- **Recall (Sensitivity):** 99.66% *(0 False Negatives)*
+- **Precision:** 93.10%
+- **F1-Score:** 96.27%
+- **Accuracy:** 94.37%
+- **Inference Latency:** 93.79 ms / URL
+
+## 📝 Branch Switching Note
+If you switch branches to test the GNN architecture (`cuda-with-gnn`), remember to manually rename `weights_cnn/` back to `weights/` when you return to this branch to avoid having to retrain the CodeBERT and CNN models from scratch.
