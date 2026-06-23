@@ -18,6 +18,7 @@ __pycache__/
 
 # Machine Learning & Datasets
 Dataset/
+Dataset.zip
 weights/
 *.pkl
 *.pt

@@ -1,3 +1,4 @@
+import sys, os; sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 import os
 import numpy as np
 import xgboost as xgb
@@ -38,7 +39,7 @@ def extract_global_features():
         print("[!] Dataset is empty.")
         return None, None, None, None
         
-    dataloader = DataLoader(dataset, batch_size=4, shuffle=False, collate_fn=custom_collate)
+    dataloader = DataLoader(dataset, batch_size=32, shuffle=False, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True)
     
     cnn_feats, cb_feats, heuristics, labels_list = [], [], [], []
     

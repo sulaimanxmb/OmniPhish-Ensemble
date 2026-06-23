@@ -141,7 +141,7 @@ def train_sota2():
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
     
     train_dataset = TensorDataset(X_train, y_train)
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True)
     
     print(f"\n[+] Training Raw CNN for {EPOCHS} Epochs...")
     model.train()

@@ -1,7 +1,5 @@
 # OmniPhish: Tri-Modal Stacking Ensemble
 
-**Status:** Completed ✅
-
 This repository contains the codebase for OmniPhish, a novel Deep Learning Stacking Ensemble designed to detect evasive zero-day phishing kits by analyzing raw Document Object Model (DOM) structural routing and JavaScript semantics, completely bypassing visual rendering (mitigating "Domain Blindness").
 
 ## Architecture Highlights
@@ -13,7 +11,7 @@ This repository contains the codebase for OmniPhish, a novel Deep Learning Stack
 
 ## Hardware Branches
 This repository is split into two specialized branches depending on your hardware environment:
-- `main`: Designed for low-resource hardware (Mac M-Series, laptops, CPUs). Uses `batch_size=1` and single-core DataLoaders to prevent memory exhaustion and IPC crashes.
+- `main`: Designed for low-resource hardware and Apple Silicon (Macbook M4 Pro, M-Series laptops, standard CPUs). Uses `batch_size=1` and single-core DataLoaders to prevent memory exhaustion and IPC crashes. If you are on an M4 Pro with 16GB RAM, use this branch to prevent Unified Memory Out-of-Memory (OOM) errors.
 - `cuda-optimized`: Designed for high-performance NVIDIA RTX machines. Uses `batch_size=32`, `num_workers=4/8` DataLoaders, Automatic Mixed Precision (AMP), and GPU-accelerated XGBoost. It also includes specific bypasses for Windows Win32 MAX_PATH and Windows Defender IPC blockages.
 
 ## Project Structure
@@ -38,7 +36,7 @@ The raw HTML dataset used to train this model is hosted externally to keep this 
 1. Install dependencies: `pip install -r requirements.txt` (and run `playwright install`)
 
 ### Option A: Fully Automated Master Pipeline (Recommended)
-You can automatically execute the entire pipeline unattended, which will run the models, the evaluations, the baselines, and the visualizations sequentially. It will generate a Master Dashboard of metrics at the end:
+You can automatically execute the entire pipeline unattended, which will run the models, the evaluations, the baselines, and the visualizations sequentially. When you launch the script, it will first prompt you to select either Fast Mode or Slow Mode. After completion, it will generate a Master Dashboard of metrics at the end:
 ```bash
 python run_pipeline.py
 ```

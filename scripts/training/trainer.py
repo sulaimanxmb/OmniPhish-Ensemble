@@ -1,3 +1,4 @@
+import sys, os; sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -91,21 +92,22 @@ def train_codebert_lora(train_loader, codebert, device, epochs=1):
             labels = labels.to(device).unsqueeze(1).float()
             optimizer.zero_grad()
             
-            with torch.amp.autocast('cuda', enabled=torch.cuda.is_available()):
-                batch_embs = []
-                for item in batch_dicts:
-                    # compute_embedding automatically enables gradients for the forward pass
-                    emb = codebert.compute_embedding(item['codebert_text'])
-                    batch_embs.append(emb)
-                    
-                if len(batch_embs) == 0:
-                    continue
-                    
-                batch_embs_tensor = torch.stack(batch_embs)
-                logits = temp_classifier(batch_embs_tensor)
-                loss = criterion(logits, labels)
+            batch_loss = 0.0
+            valid_items = 0
             
-            scaler.scale(loss).backward()
+            for i, item in enumerate(batch_dicts):
+                with torch.amp.autocast('cuda', enabled=torch.cuda.is_available()):
+                    emb = codebert.compute_embedding(item['codebert_text'])
+                    logit = temp_classifier(emb.unsqueeze(0))
+                    loss = criterion(logit, labels[i].unsqueeze(0)) / len(batch_dicts)
+                
+                scaler.scale(loss).backward()
+                batch_loss += loss.item()
+                valid_items += 1
+                
+            if valid_items == 0:
+                continue
+                
             scaler.step(optimizer)
             scaler.update()
             

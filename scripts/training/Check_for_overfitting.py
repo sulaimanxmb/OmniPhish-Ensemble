@@ -1,3 +1,4 @@
+import sys, os; sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 import os
 import numpy as np
 import pandas as pd
@@ -70,7 +71,7 @@ def test_zero_day_vault():
     dirs = {'phishing': 'dataset/raw_html/phishing', 'benign': 'dataset/raw_html/benign'}
     dataset = PhishingDataset(dirs, undersample_benign=False)
     vault_subset = Subset(dataset, vault_idx)
-    vault_loader = DataLoader(vault_subset, batch_size=4, shuffle=False, collate_fn=custom_collate)
+    vault_loader = DataLoader(vault_subset, batch_size=32, shuffle=False, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True)
     
     # 1. Load Models
     print("[*] Loading trained Neural Networks and Meta-Classifier...")
@@ -166,8 +167,9 @@ def test_zero_day_vault():
                 yticklabels=['Actual Benign', 'Actual Phishing'])
     plt.title('Zero-Day Vault Confusion Matrix')
     plt.tight_layout()
-    plt.savefig('vault_confusion_matrix.png', dpi=300)
-    print("\n[+] Saved 'vault_confusion_matrix.png' for IEEE paper.")
+    os.makedirs('visualizations', exist_ok=True)
+    plt.savefig('visualizations/vault_confusion_matrix.png', dpi=300)
+    print("\n[+] Saved 'visualizations/vault_confusion_matrix.png' for IEEE paper.")
 
 if __name__ == "__main__":
     if analyze_kfold_variance():

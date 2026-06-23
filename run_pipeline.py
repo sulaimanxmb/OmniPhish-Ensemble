@@ -7,12 +7,12 @@ import re
 
 SCRIPTS_TO_RUN = [
     ("trainer.py" if os.path.exists("trainer.py") else "scripts/training/trainer.py", "PROMPT_MODE"),  # Special flag to inject user's choice
-    ("Check_for_overfitting.py" if os.path.exists("Check_for_overfitting.py") else "scripts/evaluation/Check_for_overfitting.py", False),
-    ("ablation_study.py" if os.path.exists("ablation_study.py") else "scripts/evaluation/ablation_study.py", False),
+    ("Check_for_overfitting.py" if os.path.exists("Check_for_overfitting.py") else "scripts/training/Check_for_overfitting.py", False),
+    ("ablation_study.py" if os.path.exists("ablation_study.py") else "scripts/training/ablation_study.py", False),
     ("baselines/baseline_trainer.py", False),
     ("baselines/sota_trainer.py", False),
     ("baselines/sota2_trainer.py", False),
-    ("generate_visualizations.py" if os.path.exists("generate_visualizations.py") else "scripts/visualization/generate_visualizations.py", False)
+    ("generate_visualizations.py" if os.path.exists("generate_visualizations.py") else "scripts/visualization/generate_visualizations.py", "VIS_PROMPT_MODE")
 ]
 
 def run_script(script_name, inject_input=False):
@@ -142,13 +142,25 @@ def main():
     print("\n==================================================")
     print("🎨 VISUALIZATIONS CONFIGURATION")
     print("==================================================")
-    print("[1] YES (Generate graphs and plots at the end)")
-    print("[2] NO (Skip generate_visualizations.py)")
+    print("Select the graphs you want to generate (comma-separated):")
+    print("  [1] XGBoost Feature Importance Plot")
+    print("  [2] Confusion Matrix Heatmap")
+    print("  [3] PCA Scatter Plot (899-D -> 2D)")
+    print("  [4] t-SNE Scatter Plot (899-D -> 2D)")
+    print("  [5] ROC Curve & AUC Score")
+    print("  [6] Precision-Recall (PR) Curve")
+    print("  [7] SMOTE Spatial Imbalance Demonstration")
+    print("  [8] SHAP Game Theory Values (Expensive)")
+    print("  [9] 2D Surrogate Decision Boundary")
+    print("  [A] All of the above (Default)")
+    print("  [NONE] Skip visualizations entirely")
     print("==================================================")
-    vis_choice = input("Enter 1 or 2 [Default: 1]: ").strip()
+    vis_choice = input("Enter choices (e.g., 1,5,7 or A) [Default: A]: ").strip().upper()
     
-    if vis_choice == '2':
+    if vis_choice == "NONE":
         SCRIPTS_TO_RUN = [s for s in SCRIPTS_TO_RUN if "generate_visualizations" not in s[0]]
+    elif not vis_choice:
+        vis_choice = "A"
     
     mode_choice = '1'
     if skip_choice == '2':
@@ -174,7 +186,12 @@ def main():
             continue
             
         # Resolve dynamic input
-        current_input = mode_choice if inject_input == "PROMPT_MODE" else inject_input
+        if inject_input == "PROMPT_MODE":
+            current_input = mode_choice
+        elif inject_input == "VIS_PROMPT_MODE":
+            current_input = vis_choice
+        else:
+            current_input = inject_input
             
         success, log_lines = run_script(script, inject_input=current_input)
         

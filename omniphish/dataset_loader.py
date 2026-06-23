@@ -47,6 +47,8 @@ class PhishingDataset(Dataset):
         benign_samples = []
         
         for class_label, folder_path in raw_html_dirs.items():
+            # Resolve absolute path to prevent Windows Multiprocessing Errno 22 crashes
+            folder_path = os.path.abspath(folder_path)
             if not os.path.exists(folder_path):
                 continue
             
@@ -55,7 +57,8 @@ class PhishingDataset(Dataset):
             # No artificial capping applied; utilizing the full Phishing dataset.
                 
             for filename in files:
-                filepath = os.path.join(folder_path, filename)
+                # Store absolute normalized paths
+                filepath = os.path.normpath(os.path.join(folder_path, filename))
                 if class_label == 'phishing':
                     phish_samples.append(filepath)
                 else:
@@ -84,8 +87,24 @@ class PhishingDataset(Dataset):
         filepath = self.samples[idx]
         label = self.labels[idx]
         
-        with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
-            raw_html = f.read()
+        # Aggressive cleaning for Windows Multiprocessing string IPC corruption
+        if isinstance(filepath, str):
+            filepath = filepath.replace('\x00', '').strip()
+            if os.name == 'nt' and not filepath.startswith('\\\\?\\'):
+                # Bypass Win32 MAX_PATH and strict character validation limits
+                filepath = '\\\\?\\' + filepath
+            
+        try:
+            with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                raw_html = f.read()
+        except OSError as e:
+            print(f"\n[!] WARNING: Windows IPC failed to read {filepath} - injecting blank fallback.")
+            raw_html = "<html></html>"
+            
+        # SAFETY: Obfuscated phishing files can sometimes be 10+ MB of Base64 on a single line.
+        # BeautifulSoup will completely freeze your CPU for 60+ seconds trying to build a DOM for this.
+        # We aggressively truncate to the first 100,000 characters to prevent pipeline stalls.
+        raw_html = raw_html[:100000]
             
         cleaned_html = clean_html(raw_html)
         
