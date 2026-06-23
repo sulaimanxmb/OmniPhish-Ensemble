@@ -203,6 +203,15 @@ def generate_inference_based_graphs(choices):
         
     X_vault = np.concatenate([gnn_feats, cb_feats, heuristics], axis=1)
     
+    print("[*] Applying Distance Normalization (Standard Scaling)...")
+    import pickle
+    try:
+        with open("weights/scaler.pkl", "rb") as f:
+            scaler = pickle.load(f)
+        X_vault = scaler.transform(X_vault)
+    except Exception as e:
+        print(f"[!] Failed to load StandardScaler: {e}")
+    
     print("[*] Generating XGBoost Predictions...")
     y_pred = [meta.predict(x) for x in X_vault]
     y_probs = [meta.predict_proba(x) for x in X_vault]
