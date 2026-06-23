@@ -20,6 +20,8 @@ __pycache__/
 Dataset/
 Dataset.zip
 weights/
+weights_cnn/
+weights_gnn/
 *.pkl
 *.pt
 *.pth
