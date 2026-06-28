@@ -5,26 +5,23 @@ import subprocess
 import time
 import re
 
-SCRIPTS_TO_RUN = [
-    ("trainer.py" if os.path.exists("trainer.py") else "scripts/training/trainer.py", "PROMPT_MODE"),  # Special flag to inject user's choice
-    ("Check_for_overfitting.py" if os.path.exists("Check_for_overfitting.py") else "scripts/training/Check_for_overfitting.py", False),
-    ("ablation_study.py" if os.path.exists("ablation_study.py") else "scripts/training/ablation_study.py", False),
-    ("baselines/baseline_trainer.py", False),
-    ("baselines/sota_trainer.py", False),
-    ("baselines/sota2_trainer.py", False),
-    ("generate_visualizations.py" if os.path.exists("generate_visualizations.py") else "scripts/visualization/generate_visualizations.py", "VIS_PROMPT_MODE")
-]
+# Prevent pipeline crashes if the user's internet connection drops
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
-def run_script(script_name, inject_input=False):
-    print(f"\n{'='*60}\n🚀 EXECUTING: {script_name}\n{'='*60}")
+def run_script(script_cmd, inject_input=False):
+    script_display_name = script_cmd[0] if isinstance(script_cmd, list) else script_cmd
+    print(f"\n{'='*60}\n🚀 EXECUTING: {script_display_name} {' '.join(script_cmd[1:]) if isinstance(script_cmd, list) else ''}\n{'='*60}")
     
     log_dir = "pipeline_logs"
     os.makedirs(log_dir, exist_ok=True)
     
-    safe_name = script_name.replace("/", "_").replace("\\", "_")
+    safe_name = script_display_name.replace("/", "_").replace("\\", "_")
+    if isinstance(script_cmd, list) and len(script_cmd) > 1:
+        safe_name += "_" + "_".join(script_cmd[1:]).replace("-", "")
     log_file = os.path.join(log_dir, f"{safe_name}.log")
     
-    cmd = [sys.executable, script_name]
+    cmd = [sys.executable] + script_cmd if isinstance(script_cmd, list) else [sys.executable, script_cmd]
     
     try:
         if inject_input:
@@ -62,12 +59,12 @@ def run_script(script_name, inject_input=False):
         process.wait()
         
         if process.returncode != 0:
-            print(f"\n[!] ERROR: {script_name} crashed with exit code {process.returncode}")
+            print(f"\n[!] ERROR: {script_display_name} crashed with exit code {process.returncode}")
             return False, full_log
             
         return True, full_log
     except Exception as e:
-        print(f"\n[!] Failed to execute {script_name}: {e}")
+        print(f"\n[!] Failed to execute {script_display_name}: {e}")
         return False, []
 
 def extract_metrics(log_lines):
@@ -129,15 +126,15 @@ def main():
     print("\nThis script will automatically execute the entire pipeline unattended.")
     print("All outputs will be mirrored to the 'pipeline_logs/' directory.\n")
     
-    global SCRIPTS_TO_RUN
-    
     print("==================================================")
     print("🚀 PIPELINE CONFIGURATION")
     print("==================================================")
-    print("[1] RUN trainer.py (Execute full training from scratch)")
-    print("[2] SKIP trainer.py (Only run evaluations and baselines using existing weights)")
+    print("[1] RUN BOTH CNN & GNN (Default)")
+    print("[2] RUN CNN ONLY")
+    print("[3] RUN GNN ONLY")
+    print("[4] SKIP ALL TRAINING (Evaluations only)")
     print("==================================================")
-    skip_choice = input("Enter 1 or 2 [Default: 1]: ").strip()
+    skip_choice = input("Enter 1, 2, 3, or 4 [Default: 1]: ").strip()
     
     print("\n==================================================")
     print("🎨 VISUALIZATIONS CONFIGURATION")
@@ -158,13 +155,16 @@ def main():
     vis_choice = input("Enter choices (e.g., 1,5,7 or A) [Default: A]: ").strip().upper()
     
     if vis_choice == "NONE":
-        SCRIPTS_TO_RUN = [s for s in SCRIPTS_TO_RUN if "generate_visualizations" not in s[0]]
+        do_vis = False
     elif not vis_choice:
         vis_choice = "A"
+        do_vis = True
+    else:
+        do_vis = True
     
     mode_choice = '1'
-    if skip_choice == '2':
-        SCRIPTS_TO_RUN = [s for s in SCRIPTS_TO_RUN if s[0] != "trainer.py"]
+    if skip_choice == '4':
+        pass # Skip training
     else:
         # Ask for Training Mode
         print("\n==================================================")
@@ -176,13 +176,53 @@ def main():
         mode_choice = input("Enter 1 or 2 [Default: 1]: ").strip()
         if mode_choice not in ['1', '2']:
             mode_choice = '1'
+            
+    # Build SCRIPTS_TO_RUN dynamically
+    SCRIPTS_TO_RUN = []
+    
+    cnn_script = ("trainer.py" if os.path.exists("trainer.py") else "scripts/training/trainer.py", "PROMPT_MODE")
+    gnn_script = ("gnn_trainer.py" if os.path.exists("gnn_trainer.py") else "scripts/training/gnn_trainer.py", "PROMPT_MODE")
+    
+    models_to_eval = []
+    
+    if skip_choice == '2':
+        SCRIPTS_TO_RUN.append(cnn_script)
+        models_to_eval.append("cnn")
+    elif skip_choice == '3':
+        SCRIPTS_TO_RUN.append(gnn_script)
+        models_to_eval.append("gnn")
+    elif skip_choice == '4':
+        # Default to both for eval only unless specified
+        models_to_eval = ["cnn", "gnn"]
+    else: # Default 1: Both
+        SCRIPTS_TO_RUN.append(cnn_script)
+        SCRIPTS_TO_RUN.append(gnn_script)
+        models_to_eval.append("cnn")
+        models_to_eval.append("gnn")
+        
+    chk_script = "Check_for_overfitting.py" if os.path.exists("Check_for_overfitting.py") else "scripts/training/Check_for_overfitting.py"
+    abl_script = "ablation_study.py" if os.path.exists("ablation_study.py") else "scripts/training/ablation_study.py"
+    vis_script = "generate_visualizations.py" if os.path.exists("generate_visualizations.py") else "scripts/visualization/generate_visualizations.py"
+    
+    for model in models_to_eval:
+        SCRIPTS_TO_RUN.append(([chk_script, "--model", model], False))
+        SCRIPTS_TO_RUN.append(([abl_script, "--model", model], False))
+        
+    SCRIPTS_TO_RUN.append(("baselines/htmlphish_trainer.py", False))
+    SCRIPTS_TO_RUN.append(("baselines/longformer_trainer.py", False))
+    SCRIPTS_TO_RUN.append(("baselines/llm_zeroshot_baseline.py", False))
+    
+    if do_vis:
+        for model in models_to_eval:
+            SCRIPTS_TO_RUN.append(([vis_script, "--model", model], "VIS_PROMPT_MODE"))
     
     results_dashboard = {}
     
-    for script, inject_input in SCRIPTS_TO_RUN:
-        if not os.path.exists(script):
-            print(f"[!] Warning: {script} not found in this branch! Skipping.")
-            results_dashboard[script] = ("SKIPPED", ["File not found"])
+    for script_cmd, inject_input in SCRIPTS_TO_RUN:
+        script_path = script_cmd[0] if isinstance(script_cmd, list) else script_cmd
+        if not os.path.exists(script_path):
+            print(f"[!] Warning: {script_path} not found in this branch! Skipping.")
+            results_dashboard[str(script_cmd)] = ("SKIPPED", ["File not found"])
             continue
             
         # Resolve dynamic input
@@ -193,13 +233,13 @@ def main():
         else:
             current_input = inject_input
             
-        success, log_lines = run_script(script, inject_input=current_input)
+        success, log_lines = run_script(script_cmd, inject_input=current_input)
         
         if success:
             metrics = extract_metrics(log_lines)
-            results_dashboard[script] = ("SUCCESS", metrics)
+            results_dashboard[str(script_cmd)] = ("SUCCESS", metrics)
         else:
-            results_dashboard[script] = ("FAILED", ["Script crashed. Check pipeline_logs/."])
+            results_dashboard[str(script_cmd)] = ("FAILED", ["Script crashed. Check pipeline_logs/."])
             
     # Print Final Dashboard
     print("\n\n" + "="*80)

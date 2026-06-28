@@ -24,7 +24,27 @@ The entire system is completely automated via the master pipeline script.
    ```bash
    python run_pipeline.py
    ```
-   *The pipeline will automatically prompt you to choose your training mode (Fast vs. Strict Isolation Slow Mode) and select which mathematical visualizations you want to generate.*
+   *The pipeline will automatically prompt you to choose your training mode (Fast vs. Strict Isolation Slow Mode) and select which mathematical visualizations you want to generate. It will also automatically execute the baseline comparison scripts.*
+
+### 🤖 Running Independent Baselines (For IEEE Paper)
+To independently verify the baseline metrics without running the full OmniPhish pipeline, you can execute them individually. Note that these scripts output their results to the terminal and include **Peak VRAM** tracking.
+
+1. **HTMLPhish (Character-Level CNN):**
+   ```bash
+   python baselines/htmlphish_trainer.py
+   ```
+2. **Longformer (Long-Context Transformer):**
+   ```bash
+   python baselines/longformer_trainer.py
+   ```
+3. **Qwen2.5-Coder:14B (Large Language Model via Ollama):**
+   *Note: This specific script requires the Ollama engine to bypass PyTorch VRAM limits.*
+   - Install the Windows client from: https://ollama.com/download/windows
+   - Download the model in a background terminal: `ollama run qwen2.5-coder:14b`
+   - Run the evaluation script:
+   ```bash
+   python baselines/llm_zeroshot_baseline.py
+   ```
 
 ---
 

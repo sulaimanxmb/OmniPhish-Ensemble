@@ -1,5 +1,6 @@
 import sys, os; sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 import os
+import argparse
 import numpy as np
 import pandas as pd
 import torch
@@ -13,6 +14,7 @@ from tqdm import tqdm
 
 from omniphish.dataset_loader import PhishingDataset, custom_collate
 from omniphish.cnn_model import CNN1DEmbedding
+from omniphish.gnn_model import GNNEmbedding
 from omniphish.transformer_model import CodeBERTEmbedding
 from omniphish.classifier import MetaClassifier
 
@@ -53,19 +55,25 @@ def analyze_kfold_variance():
         
     return True
 
-def test_zero_day_vault():
+def test_zero_day_vault(model_type):
     print("\n" + "="*60)
-    print("🛡️ PART 2: ZERO-DAY VAULT INFERENCE (METHOD 3)")
+    print(f"🛡️ PART 2: ZERO-DAY VAULT INFERENCE ({model_type.upper()})")
     print("="*60)
     
-    if not os.path.exists("weights/vault_indices.npy"):
-        print("[!] Error: 'weights/vault_indices.npy' not found. Ensure trainer.py isolated the vault.")
-        return
+    weights_dir = f"weights_{model_type}" if os.path.exists(f"weights_{model_type}") else "weights"
+    
+    if not os.path.exists(f"{weights_dir}/vault_indices.npy"):
+        # Fallback to general weights directory if not in backup
+        if os.path.exists("weights/vault_indices.npy"):
+            weights_dir = "weights"
+        else:
+            print(f"[!] Error: 'vault_indices.npy' not found. Ensure trainer.py isolated the vault.")
+            return
         
     device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
-    print(f"[*] Running inference on device: {device}")
+    print(f"[*] Running inference on device: {device} loading from {weights_dir}/")
     
-    vault_idx = np.load("weights/vault_indices.npy")
+    vault_idx = np.load(f"{weights_dir}/vault_indices.npy")
     print(f"[*] Loaded {len(vault_idx)} isolated Zero-Day samples from the Vault.")
     
     dirs = {'phishing': 'dataset/raw_html/phishing', 'benign': 'dataset/raw_html/benign'}
@@ -74,18 +82,28 @@ def test_zero_day_vault():
     vault_loader = DataLoader(vault_subset, batch_size=32, shuffle=False, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True)
     
     # 1. Load Models
-    print("[*] Loading trained Neural Networks and Meta-Classifier...")
-    cnn = CNN1DEmbedding(embedding_dim=64, num_filters=128).to(device)
-    try:
-        cnn.load_state_dict(torch.load("weights/cnn_trained.pt", map_location=device))
-    except Exception as e:
-        print(f"[!] Failed to load CNN weights: {e}")
-        return
-    cnn.eval()
+    print(f"[*] Loading trained Neural Networks and Meta-Classifier for {model_type.upper()}...")
+    
+    struct_model = None
+    if model_type == "cnn":
+        struct_model = CNN1DEmbedding(embedding_dim=64, num_filters=128).to(device)
+        try:
+            struct_model.load_state_dict(torch.load(f"{weights_dir}/cnn_trained.pt", map_location=device))
+        except Exception as e:
+            print(f"[!] Failed to load CNN weights: {e}")
+            return
+    elif model_type == "gnn":
+        struct_model = GNNEmbedding(embedding_dim=64, hidden_dim=64, dropout=0.5).to(device)
+        try:
+            struct_model.load_state_dict(torch.load(f"{weights_dir}/gnn_trained.pt", map_location=device))
+        except Exception as e:
+            print(f"[!] Failed to load GNN weights: {e}")
+            return
+    struct_model.eval()
     
     codebert = CodeBERTEmbedding(use_lora=True).to(device)
     try:
-        codebert.load_state_dict(torch.load("weights/codebert_trained.pt", map_location=device))
+        codebert.load_state_dict(torch.load(f"{weights_dir}/codebert_trained.pt", map_location=device))
     except Exception as e:
         print(f"[!] Failed to load CodeBERT weights: {e}")
         return
@@ -93,29 +111,35 @@ def test_zero_day_vault():
     
     meta = MetaClassifier()
     try:
-        meta.load("weights/meta_classifier.pkl")
+        meta.load(f"{weights_dir}/meta_classifier.pkl")
     except Exception as e:
         print(f"[!] Failed to load XGBoost Meta-Classifier: {e}")
         return
         
     # 2. Extract Features
-    print("[*] Extracting Structural & Semantic features for Vault data...")
-    cnn_feats, cb_feats, heuristics, labels_list = [], [], [], []
+    print(f"[*] Extracting Structural & Semantic features for Vault data ({model_type.upper()})...")
+    struct_feats, cb_feats, heuristics, labels_list = [], [], [], []
     
     start_time = time.time()
     
     with torch.no_grad():
         for batch_dicts, labels in tqdm(vault_loader, desc="Vault Extraction"):
             for item, label in zip(batch_dicts, labels):
-                c_emb = cnn(item['cnn_input'].unsqueeze(0).to(device)).cpu().numpy().flatten()
+                if model_type == "cnn":
+                    s_emb = struct_model(item['cnn_input'].unsqueeze(0).to(device)).cpu().numpy().flatten()
+                elif model_type == "gnn":
+                    gnn_nodes = item['gnn_nodes'].unsqueeze(0).to(device)
+                    gnn_adj = item['gnn_adj'].unsqueeze(0).to(device)
+                    s_emb = struct_model(gnn_nodes, gnn_adj).cpu().numpy().flatten()
+                    
                 cb_emb = codebert.compute_embedding(item['codebert_text']).cpu().numpy().flatten()
                 
-                cnn_feats.append(c_emb)
+                struct_feats.append(s_emb)
                 cb_feats.append(cb_emb)
                 heuristics.append(item['heuristic'].cpu().numpy())
                 labels_list.append(label.item())
                 
-    cnn_feats = np.array(cnn_feats)
+    struct_feats = np.array(struct_feats)
     cb_feats = np.array(cb_feats)
     heuristics = np.array(heuristics)
     y_true = np.array(labels_list)
@@ -124,11 +148,26 @@ def test_zero_day_vault():
     if len(heuristics.shape) == 1:
         heuristics = heuristics.reshape(-1, 1)
         
-    X_vault = np.concatenate([cnn_feats, cb_feats, heuristics], axis=1)
+    X_vault = np.concatenate([struct_feats, cb_feats, heuristics], axis=1)
     
+    print("[*] Applying Distance Normalization (Standard Scaling)...")
+    import pickle
+    try:
+        with open(f"{weights_dir}/scaler.pkl", "rb") as f:
+            scaler = pickle.load(f)
+        X_vault = scaler.transform(X_vault)
+    except Exception as e:
+        pass # If scaler is missing, proceed with raw features (CNN case)
+        
     # 3. Predict & Evaluate
     print("[*] Running XGBoost Meta-Classifier on Vault features...")
     y_pred = [meta.predict(x) for x in X_vault]
+    y_probs = [meta.predict_proba(x) for x in X_vault]
+    
+    os.makedirs("metrics", exist_ok=True)
+    np.save(f"metrics/y_probs_{model_type}.npy", np.array(y_probs))
+    np.save(f"metrics/y_true_{model_type}.npy", np.array(y_true))
+    print(f"[*] Saved raw predictions to metrics/ for ROC/PR generation.")
     
     end_time = time.time()
     
@@ -165,12 +204,16 @@ def test_zero_day_vault():
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
                 xticklabels=['Predicted Benign', 'Predicted Phishing'],
                 yticklabels=['Actual Benign', 'Actual Phishing'])
-    plt.title('Zero-Day Vault Confusion Matrix')
+    plt.title(f'Zero-Day Vault Confusion Matrix ({model_type.upper()})')
     plt.tight_layout()
     os.makedirs('visualizations', exist_ok=True)
-    plt.savefig('visualizations/vault_confusion_matrix.png', dpi=300)
-    print("\n[+] Saved 'visualizations/vault_confusion_matrix.png' for IEEE paper.")
+    plt.savefig(f'visualizations/{model_type}_vault_confusion_matrix.png', dpi=300)
+    print(f"\n[+] Saved 'visualizations/{model_type}_vault_confusion_matrix.png' for IEEE paper.")
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Check for Overfitting")
+    parser.add_argument("--model", type=str, choices=["cnn", "gnn"], default="cnn", help="Which model to evaluate")
+    args = parser.parse_args()
+    
     if analyze_kfold_variance():
-        test_zero_day_vault()
+        test_zero_day_vault(args.model)

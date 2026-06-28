@@ -19,7 +19,7 @@ __pycache__/
 # Machine Learning & Datasets
 Dataset/
 Dataset.zip
-weights/
+weights*/
 *.pkl
 *.pt
 *.pth
@@ -32,7 +32,7 @@ weights/
 # Project specific ignores
 top-1m.txt
 *.pdf
-*.tex
+!Paper.tex
 Project_Summary_For_Research_Paper.md
 # allow specific visualizations but ignore others
 !visualizations/

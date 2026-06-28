@@ -7,6 +7,51 @@ from .html_parser import clean_html, extract_codebert_tags
 from .cnn_model import text_to_tensor
 from .url_heuristics import is_suspicious_action
 
+def extract_dom_graph(soup, max_nodes=1024):
+    """
+    Parses the BeautifulSoup DOM tree into a graph structure.
+    Returns:
+        nodes: Tensor of shape (max_nodes,) containing tag IDs
+        adj: Tensor of shape (max_nodes, max_nodes) representing adjacency
+    """
+    nodes = []
+    edges = []
+    
+    def traverse(element, parent_idx=-1):
+        if len(nodes) >= max_nodes:
+            return
+            
+        current_idx = len(nodes)
+        
+        tag_name = element.name if element.name else "text"
+        # simple hash for tag
+        tag_id = (hash(tag_name) % 255) + 1
+        nodes.append(tag_id)
+        
+        if parent_idx != -1:
+            edges.append((parent_idx, current_idx))
+            edges.append((current_idx, parent_idx)) # undirected graph for better info flow
+            
+        if hasattr(element, 'children'):
+            for child in element.children:
+                if child.name is not None:
+                    traverse(child, current_idx)
+                    
+    body = soup.find('body')
+    root = body if body else soup
+    traverse(root, -1)
+    
+    num_nodes = len(nodes)
+    if num_nodes < max_nodes:
+        nodes.extend([0] * (max_nodes - num_nodes))
+        
+    adj = torch.zeros((max_nodes, max_nodes), dtype=torch.float32)
+    for u, v in edges:
+        if u < max_nodes and v < max_nodes:
+            adj[u, v] = 1.0
+            
+    return torch.tensor(nodes, dtype=torch.long), adj
+
 def get_dom_depth_stats(soup):
     """
     Recursively calculates the Maximum and Average DOM tree depth.
@@ -125,8 +170,13 @@ class PhishingDataset(Dataset):
                 
         max_depth, avg_depth = get_dom_depth_stats(soup)
                 
+        # 1.5 Provide Graph representation for GNN
+        gnn_nodes, gnn_adj = extract_dom_graph(soup, max_nodes=1024)
+        
         return {
             'cnn_input': cnn_tensor,
+            'gnn_nodes': gnn_nodes,
+            'gnn_adj': gnn_adj,
             'codebert_text': codebert_text,
             'heuristic': torch.tensor([suspicious_form_action, max_depth, avg_depth], dtype=torch.float32),
             'label': torch.tensor(label, dtype=torch.float32)
