@@ -22,7 +22,7 @@ OUTPUT_DIR = "visualizations"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 def save_visualization(filename, model_type=None):
-    if model_type and filename != 'baseline_comparison.png':
+    if model_type and filename != 'baseline_comparison.pdf':
         filename = f"{model_type}_{filename}"
         
     filepath = os.path.join(OUTPUT_DIR, filename)
@@ -65,7 +65,7 @@ def generate_xgboost_importance(model_type):
                         title=f"Top 20 Ensemble Features (XGBoost - {model_type.upper()})", 
                         color="#1f77b4", grid=False)
     plt.tight_layout()
-    save_visualization('xgboost_importance.png', model_type)
+    save_visualization('xgboost_importance.pdf', model_type)
 
 def generate_smote_pca(model_type):
     print(f"\n[*] Initializing SMOTE Synthetic Data Generator ({model_type.upper()})...")
@@ -172,7 +172,7 @@ def generate_smote_pca(model_type):
     
     plt.suptitle(f'SMOTE Effectiveness in OmniPhish 899-D Spatial Memory ({model_type.upper()})', fontweight='bold', fontsize=18)
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    save_visualization('smote_pca_comparison.png', model_type)
+    save_visualization('smote_pca_comparison.pdf', model_type)
 
 
 def generate_inference_based_graphs(choices, model_type):
@@ -274,7 +274,7 @@ def generate_inference_based_graphs(choices, model_type):
                     yticklabels=['Actual Benign', 'Actual Phishing'])
         plt.title('Zero-Day Vault Confusion Matrix', fontweight='bold', pad=15)
         plt.tight_layout()
-        save_visualization('vault_confusion_matrix.png', model_type)
+        save_visualization('vault_confusion_matrix.pdf', model_type)
 
     # 3. PCA
     if '3' in choices:
@@ -290,7 +290,7 @@ def generate_inference_based_graphs(choices, model_type):
         cbar = plt.colorbar(scatter, ticks=[0, 1])
         cbar.ax.set_yticklabels(['Benign (0)', 'Phishing (1)'])
         plt.grid(True, alpha=0.3)
-        save_visualization('pca_clusters.png', model_type)
+        save_visualization('pca_clusters.pdf', model_type)
 
     # 4. t-SNE
     if '4' in choices:
@@ -306,7 +306,7 @@ def generate_inference_based_graphs(choices, model_type):
         cbar = plt.colorbar(scatter, ticks=[0, 1])
         cbar.ax.set_yticklabels(['Benign (0)', 'Phishing (1)'])
         plt.grid(True, alpha=0.3)
-        save_visualization('tsne_clusters.png')
+        save_visualization('tsne_clusters.pdf')
 
     # 5. ROC Curve
     if '5' in choices:
@@ -324,7 +324,7 @@ def generate_inference_based_graphs(choices, model_type):
         plt.title('Receiver Operating Characteristic (ROC)', fontweight='bold', pad=15)
         plt.legend(loc="lower right")
         plt.grid(True, alpha=0.3)
-        save_visualization('vault_roc_curve.png')
+        save_visualization('vault_roc_curve.pdf')
 
     # 6. Precision-Recall Curve
     if '6' in choices:
@@ -339,7 +339,7 @@ def generate_inference_based_graphs(choices, model_type):
         plt.title('Precision-Recall Curve', fontweight='bold', pad=15)
         plt.legend(loc="lower left")
         plt.grid(True, alpha=0.3)
-        save_visualization('vault_pr_curve.png')
+        save_visualization('vault_pr_curve.pdf')
 
     # 8. SHAP Explainer Values
     if '8' in choices:
@@ -358,7 +358,7 @@ def generate_inference_based_graphs(choices, model_type):
             shap.summary_plot(shap_values, X_shap, feature_names=get_feature_names(), show=False, max_display=15)
             plt.title("SHAP Global Feature Explainability", fontweight='bold', pad=15)
             plt.tight_layout()
-            save_visualization('shap_summary.png')
+            save_visualization('shap_summary.pdf')
         except Exception as e:
             print(f"  [!] SHAP calculation failed: {e}")
 
@@ -398,7 +398,7 @@ def generate_inference_based_graphs(choices, model_type):
         cbar.ax.set_yticklabels(['Benign (0)', 'Phishing (1)'])
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
-        save_visualization('surrogate_decision_boundary.png')
+        save_visualization('surrogate_decision_boundary.pdf')
 
 def generate_radar_chart():
     print("\n[*] Generating Architecture Radar Chart...")
@@ -439,7 +439,7 @@ def generate_radar_chart():
     ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1))
     
     plt.tight_layout()
-    save_visualization('architecture_radar_chart.png')
+    save_visualization('architecture_radar_chart.pdf')
 
 def generate_baseline_comparison():
     print("\n[*] Generating Baseline Comparison (F1-Score vs. Peak VRAM)...")
@@ -494,7 +494,7 @@ def generate_baseline_comparison():
     ax2.legend(lines + lines2, labels + labels2, loc='center right')
     
     plt.tight_layout()
-    save_visualization('baseline_comparison.png')
+    save_visualization('baseline_comparison.pdf')
 
 def generate_combined_roc_pr():
     print("\n[*] Generating Combined ROC & PR Curves for OmniPhish Ensemble...")
@@ -534,7 +534,7 @@ def generate_combined_roc_pr():
     plt.legend(loc="lower right")
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    save_visualization('combined_roc_curve.png')
+    save_visualization('combined_roc_curve.pdf')
     
     # === COMBINED PR CURVE ===
     plt.figure(figsize=(10, 8))
@@ -555,13 +555,26 @@ def generate_combined_roc_pr():
     plt.legend(loc="lower left")
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    save_visualization('combined_pr_curve.png')
+    save_visualization('combined_pr_curve.pdf')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate Visualizations")
-    parser.add_argument("--model", type=str, choices=["cnn", "gnn"], default="cnn", help="Which model to evaluate")
+    parser.add_argument("--model", type=str, choices=["cnn", "gnn", "both"], default="both", help="Which model to evaluate (default: both)")
     args, unknown = parser.parse_known_args()
     
+    # Delete everything in OUTPUT_DIR before starting
+    print(f"\n[*] Clearing existing files in {OUTPUT_DIR}...")
+    import shutil
+    for filename in os.listdir(OUTPUT_DIR):
+        filepath = os.path.join(OUTPUT_DIR, filename)
+        try:
+            if os.path.isfile(filepath) or os.path.islink(filepath):
+                os.unlink(filepath)
+            elif os.path.isdir(filepath):
+                shutil.rmtree(filepath)
+        except Exception as e:
+            print(f"Failed to delete {filepath}. Reason: {e}")
+
     print("="*60)
     print(f"📸 OMNIPHISH VISUALIZATION SUITE ({args.model.upper()})")
     print("="*60)
@@ -586,6 +599,8 @@ if __name__ == "__main__":
     else:
         choices = [c.strip() for c in choice.split(',')]
         
+    models_to_run = ['cnn', 'gnn'] if args.model == 'both' else [args.model]
+        
     if '0' in choices:
         generate_baseline_comparison()
         
@@ -595,14 +610,16 @@ if __name__ == "__main__":
     if 'C' in choices:
         generate_combined_roc_pr()
         
-    if '1' in choices:
-        generate_xgboost_importance(args.model)
-        
-    if '7' in choices:
-        generate_smote_pca(args.model)
-        
-    if any(c in choices for c in ['2', '3', '4', '5', '6', '8', '9']):
-        generate_inference_based_graphs(choices, args.model)
+    for m in models_to_run:
+        print(f"\n[{m.upper()}] Generating model-specific visualizations...")
+        if '1' in choices:
+            generate_xgboost_importance(m)
+            
+        if '7' in choices:
+            generate_smote_pca(m)
+            
+        if any(c in choices for c in ['2', '3', '4', '5', '6', '8', '9']):
+            generate_inference_based_graphs(choices, m)
         
     print("\n[+] Selected mathematical representations successfully rendered to disk.")
     print("="*60)

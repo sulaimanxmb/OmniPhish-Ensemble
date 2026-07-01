@@ -1,0 +1,8 @@
+gradio
+torch
+transformers
+playwright==1.42.0
+beautifulsoup4
+xgboost
+scikit-learn
+numpy

@@ -9,6 +9,7 @@
 \usepackage{xcolor}
 \usepackage{booktabs}
 \usepackage{hyperref}
+\usepackage{float}
 
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
@@ -18,7 +19,23 @@
 \title{OmniPhish: A Tri-Modal Stacking Ensemble for Evasive Phishing Detection\\}
 
 \author{
-\IEEEauthorblockN{Anonymous Authors}
+\IEEEauthorblockN{Mohammed Sulaiman Eksambi}
+\IEEEauthorblockA{\textit{CSE - Cybersecurity} \\
+\textit{Dayananda Sagar University}\\
+Harohalli, India \\
+sulaimaneksambi@gmail.com}
+\and
+\IEEEauthorblockN{Dushanth Purushotham D}
+\IEEEauthorblockA{\textit{CSE - Cybersecurity} \\
+\textit{Dayananda Sagar University}\\
+Harohalli, India \\
+dushanthpurushotham@gmail.com}
+\and
+\IEEEauthorblockN{Numan Nisar Ahmed}
+\IEEEauthorblockA{\textit{CSE - Cybersecurity} \\
+\textit{Dayananda Sagar University}\\
+Harohalli, India \\
+nisarnuman7@gmail.com}
 }
 
 \maketitle
@@ -32,7 +49,7 @@ Phishing Detection, Deep Learning, Stacking Ensemble, CodeBERT, Convolutional Ne
 \end{IEEEkeywords}
 
 \section{Introduction}
-Phishing remains a primary vector for cyberattacks \cite{apwg}, responsible for significant enterprise credential theft and financial fraud. To ensure reproducibility and support the community, all source code, models, and datasets have been made publicly available \footnote{Source Code: \url{https://github.com/sulaimanxmb/OmniPhish-Ensemble}, Dataset: \url{https://www.kaggle.com/datasets/sulaimaneksambi/omniphish-dataset-v1}, Model: \url{[HuggingFace Placeholder]}}. Recent industry reports indicate a massive surge in evasive campaigns, with millions of highly sophisticated attacks bypassing traditional secure email gateways annually. As web development has transitioned towards complex, JavaScript-heavy frameworks (e.g., React \cite{react}, Vue, Angular), cybercriminals have adapted by deploying high-fidelity phishing kits. These kits mirror legitimate enterprise structures, utilizing obfuscated JavaScript and client-side cloaking to evade automated security scanners \cite{oest, crawlphish}. 
+Phishing remains a primary vector for cyberattacks \cite{apwg}, responsible for significant enterprise credential theft and financial fraud. To ensure reproducibility and support the community, all source code, models, and datasets have been made publicly available \footnote{\raggedright Source Code: \url{https://github.com/sulaimanxmb/OmniPhish-Ensemble} \\ Dataset: \url{https://www.kaggle.com/datasets/sulaimaneksambi/omniphish-dataset-v1} \\ Model: \url{https://huggingface.co/XMB480/OmniPhish-Ensemble}}. Recent industry reports indicate a massive surge in evasive campaigns, with millions of highly sophisticated attacks bypassing traditional secure email gateways annually. As web development has transitioned towards complex, JavaScript-heavy frameworks (e.g., React \cite{react}, Vue, Angular), cybercriminals have adapted by deploying high-fidelity phishing kits. These kits mirror legitimate enterprise structures, utilizing obfuscated JavaScript and client-side cloaking to evade automated security scanners \cite{oest, crawlphish}. 
 
 Standard computer vision models (such as Phishpedia \cite{phishpedia}) achieve high accuracy by localizing brand identity logos via object detection. However, they rely on computationally expensive image rendering pipelines that introduce significant latency, making them difficult to deploy in real-time edge environments. Furthermore, visual models can struggle with dynamic CSS and inline scalable vector graphics (SVGs). Similarly, Natural Language Processing (NLP) solutions that exclusively evaluate webpage text suffer from ``Domain Blindness.'' If a phishing page's layout and text mimic a legitimate banking portal, a text/visual-content model will likely produce a false negative. Attackers exploit this vulnerability by perfectly replicating legitimate layouts and structural elements across distinct malicious domains.
 
@@ -45,17 +62,17 @@ Existing phishing detection methodologies struggle against modern evasion techni
 Early machine learning models relied on manual feature extraction, analyzing URLs for anomalous character distributions \cite{sahingoz}. More recent content-driven models have leveraged modern transformers like DistilBERT and RoBERTa to detect semantic anomalies in webpage text \cite{phishbert_2025}. However, perfectly cloned login portals inherently contain cloned, legitimate text, rendering NLP content models vulnerable to high false negative rates.
 
 \subsection{Structural and DOM-Based Analysis}
-Previous research has attempted to model the DOM tree using Convolutional architectures (HTMLPhish) \cite{htmlphish} or Graph Neural Networks (GNNs) \cite{zhang_gnn}. While theoretically robust, applying end-to-end GNNs on raw web structures introduces significant memory overheads, creating computational bottlenecks on consumer-grade hardware. Furthermore, many existing models suffer from data leakage by training on noisy datasets and failing to isolate validation sets during hyperparameter tuning \cite{dos_and_donts}.
+Previous research has attempted to model the DOM tree using Convolutional architectures (HTMLPhish) \cite{htmlphish} or Graph Neural Networks (GNNs). While theoretically robust, surveys on GNNs \cite{wu_gnn_survey} note that applying them end-to-end on raw web structures introduces significant memory overheads, creating computational bottlenecks on consumer-grade hardware. Furthermore, many existing models suffer from data leakage by training on noisy datasets and failing to isolate validation sets during hyperparameter tuning \cite{dos_and_donts}.
 
 \subsection{Multimodal and Contemporary Fusion Baselines}
-Recent state-of-the-art frameworks have increasingly explored multimodal fusion. NetPhish-Mix \cite{netphishmix} combines Heterogeneous Graph Transformers for the DOM with Vision Transformers (ViT) on page screenshots. LightPhishAI \cite{lightphishai} optimizes a similar visual-textual fusion for edge-deployment. While achieving high accuracy, these architectures remain dependent on computationally expensive image rendering pipelines that introduce significant inference latency and remain vulnerable to dynamic CSS obfuscation. Other contemporary frameworks, such as SemanticPhishNet \cite{semanticphishnet}, attempt to extract contextual embeddings by passing raw HTML tag sequences directly into transformers. In contrast, OmniPhish proposes a theoretically superior decoupling: utilizing a 1D-CNN or GNN exclusively for structural routing, while reserving the transformer (CodeBERT) strictly for the execution logic of isolated JavaScript, thereby eradicating the noise inherent to raw HTML processing and bypassing the latency of visual rendering.
+Recent state-of-the-art frameworks have increasingly explored multimodal fusion. NetPhish-Mix \cite{netphishmix} combines Heterogeneous Graph Transformers for the DOM with Vision Transformers (ViT) on page screenshots. LightPhishAI \cite{lightphishai} optimizes a similar visual-textual fusion for edge-deployment. While achieving high accuracy, these architectures remain dependent on computationally expensive image rendering pipelines that introduce significant inference latency and remain vulnerable to dynamic CSS obfuscation. Other contemporary frameworks, such as WebPhish \cite{webphish}, attempt to extract contextual embeddings by passing raw HTML tag sequences directly into transformers. In contrast, OmniPhish proposes a theoretically superior decoupling: utilizing a 1D-CNN or GNN exclusively for structural routing, while reserving the transformer (CodeBERT) strictly for the execution logic of isolated JavaScript, thereby eradicating the noise inherent to raw HTML processing and bypassing the latency of visual rendering.
 
 \section{Dataset Generation and Class Imbalance}
 
 \subsection{Dataset Ingestion and The HITL Framework}
 To overcome the limitations of defective academic datasets, an autonomous, memory-managed ingestion pipeline was developed. Modern enterprise portals employ anti-bot systems (e.g., Cloudflare \cite{cloudflare}) that proactively block standard scraping libraries. The proposed pipeline utilizes Playwright \cite{playwright} injected with dynamic environmental masking and strict HTTP header injection to emulate authentic browsing.
 
-To capture complex enterprise logins requiring physical navigation (e.g., multi-step SSO), a Human-In-The-Loop (HITL) DOM Extraction Framework was engineered. This framework triggers manual intervention specifically when CAPTCHAs or Multi-Factor Authentication prompts are encountered, allowing a researcher to bypass sophisticated anti-bot mechanisms on the Tranco Top 1 Million list \cite{tranco} and triggering a DOM extraction script only after the JavaScript payload has fully rendered. This active collection period, spanning strictly from November 2025 to April 2026, resulted in a highly relevant, curated dataset of 7,990 post-rendered samples.
+To capture complex enterprise logins requiring physical navigation (e.g., multi-step SSO), a Human-In-The-Loop (HITL) DOM Extraction Framework was engineered. This framework triggers manual intervention specifically when CAPTCHAs or Multi-Factor Authentication prompts are encountered, allowing a researcher to bypass sophisticated anti-bot mechanisms and triggering a DOM extraction script only after the JavaScript payload has fully rendered. Benign domains were sampled from the Tranco Top 1 Million list \cite{tranco}, while phishing URLs were aggregated through automated periodic scans of the OpenPhish threat feed. This active collection period, spanning strictly from November 2025 to April 2026, resulted in a highly relevant, curated dataset of 7,990 post-rendered samples.
 
 \subsection{Addressing Class Imbalance via SMOTE}
 Real-world threat landscapes are inherently imbalanced. The curated dataset possessed an imbalance ratio of approximately 2.55:1 (5,740 Phishing to 2,250 Benign samples). Training an unweighted neural network on this distribution biases the decision boundary toward the majority class.
@@ -63,51 +80,23 @@ Real-world threat landscapes are inherently imbalanced. The curated dataset poss
 To address this, the Synthetic Minority Over-sampling Technique (SMOTE) \cite{chawla} was applied. Crucially, to avoid data leakage, SMOTE was strictly applied \textit{exclusively} to the training subset of each cross-validation fold. To preserve multivariate covariance across the distinct modalities, SMOTE was applied post-concatenation across the joint 899-dimensional space. However, to prevent the 768-dimensional CodeBERT vector from mathematically dominating the Euclidean distance calculations used by the k-nearest neighbors algorithm, rigorous distance normalization via Standard Scaling was applied to the joint feature space prior to interpolation. While XGBoost natively supports class imbalance handling via \texttt{scale\_pos\_weight}, applying SMOTE directly in the latent space acts as a vital geometric regularizer. As illustrated in Fig. \ref{fig:smote}, this normalized application geometrically balanced the unified latent feature space, strictly enforcing spatial decision boundaries for the meta-classifier. Rather than claiming to generate semantically cohesive synthetic codebases in the non-linear transformer manifold, SMOTE acts primarily as a geometric regularizer, allowing the XGBoost meta-classifier to draw a mathematically sound decision boundary.
 
 \begin{figure}[htbp]
-\centerline{\includegraphics[width=0.48\textwidth]{visualizations/cnn_smote_pca_comparison.png}}
+\centerline{\includegraphics[width=0.48\textwidth]{visualizations/cnn_smote_pca_comparison.pdf}}
 \caption{PCA visualization demonstrating the effectiveness of fold-specific SMOTE in geometrically balancing the 899-D Spatial Memory prior to classification.}
 \label{fig:smote}
 \end{figure}
 
 \subsection{Dataset Heterogeneity and Evasion Profiling}
-To evaluate the ensemble's capacity to handle modern evasion techniques, the dataset's underlying framework distribution was profiled using deep signature matching. The dataset reflects the heterogeneous nature of the real-world internet, comprising both legacy HTML structures and evasive modern frameworks. As shown in Table \ref{tab:dataset_heterogeneity}, approximately 49.2\% of the dataset consists of traditional static HTML, representing legacy phishing kits. The remaining 50.8\% comprises complex Single Page Applications and Server-Rendered Content Management Systems (CMS). This split ensures OmniPhish is rigorously evaluated against both backwards-compatible traditional attacks and modern, JavaScript-heavy evasion tactics, preventing framework bias.
-
-\begin{table}[htbp]
-\caption{Dataset Framework Distribution Profiling}
-\begin{center}
-\resizebox{\columnwidth}{!}{
-\begin{tabular}{|l|c|c|}
-\hline
-\textbf{Framework / Technology} & \textbf{Sample Count} & \textbf{Percentage} \\
-\hline
-Traditional / Static HTML & 3,929 & 49.2\% \\
-\hline
-Other Modern SPAs (Webpack/Vite) & 1,692 & 21.2\% \\
-\hline
-CMS \& Server-Rendered (WordPress/PHP) & 931 & 11.7\% \\
-\hline
-React / Next.js (SPA) & 927 & 11.6\% \\
-\hline
-Vue / Nuxt.js (SPA) & 367 & 4.6\% \\
-\hline
-Angular (SPA) & 144 & 1.8\% \\
-\hline
-\textbf{Total Dataset Size} & \textbf{7,990} & \textbf{100.0\%} \\
-\hline
-\end{tabular}
-}
-\label{tab:dataset_heterogeneity}
-\end{center}
-\end{table}
+To evaluate the ensemble's capacity to handle modern evasion techniques, the curated dataset was built to reflect the heterogeneous nature of the real-world internet. Rather than exclusively relying on traditional static HTML (which represents legacy phishing kits), the dataset intrinsically captures complex Single Page Applications (SPAs) and JavaScript-heavy frameworks (such as React, Vue, and Next.js) encountered in the wild. This diversity ensures OmniPhish is rigorously evaluated against both backwards-compatible traditional attacks and modern evasion tactics, preventing framework bias.
 
 \section{Proposed System Architecture}
+
+To address overfitting while maintaining structural understanding, this research developed a Tri-Modal Stacking Ensemble architecture, as illustrated in Fig. \ref{fig:architecture}. The pipeline processes the HTML DOM and JavaScript separately: the DOM tag sequence is encoded by either a 1D-CNN or a Graph Neural Network (GNN) to extract a 128-D spatial/relational vector; the isolated JS is tokenized and run through CodeBERT with 1D global max pooling to a 768-D semantic vector; and explicit heuristics form a 3-D expert vector. These are concatenated into an 899-D joint embedding and classified by an XGBoost meta-classifier.
 
 \begin{figure}[htbp]
 \centerline{\includegraphics[width=0.48\textwidth]{visualizations/Architecture.pdf}}
 \caption{The OmniPhish Tri-Modal Architecture detailing the parallel extraction of Spatial (CNN/GNN), Semantic (CodeBERT), and Heuristic features prior to XGBoost fusion.}
 \label{fig:architecture}
 \end{figure}
-
-To address overfitting while maintaining structural understanding, this research developed a Tri-Modal Stacking Ensemble architecture. The pipeline processes the HTML DOM and JavaScript separately: the DOM tag sequence is encoded by either a 1D-CNN or a Graph Neural Network (GNN) to extract a 128-D spatial/relational vector; the isolated JS is tokenized and run through CodeBERT with 1D global max pooling to a 768-D semantic vector; and explicit heuristics form a 3-D expert vector. These are concatenated into an 899-D joint embedding and classified by an XGBoost meta-classifier.
 
 \subsection{Context-Aware Structural Analysis (CNN1D / GNN)}
 Phishing templates share hidden structural hierarchies regardless of the overlaid CSS. The raw HTML DOM is intercepted and undergoes structural extraction. To evaluate optimal extraction techniques, two variants were tested. The OmniPhish-CNN variant treats the encoded codebase as a 1D sequence, utilizing a multi-scale CNN1D (kernel sizes 3, 4, and 5) to learn spatial character arrangements. Conversely, the OmniPhish-GNN variant models the DOM tree as a connected relational graph, leveraging 2 discrete Graph Convolution Layers \cite{kipf_gcn} for message-passing to identify cyclic structural anomalies without suffering from excessive over-smoothing. Both models project their outputs to a dense 128-dimensional structural vector.
@@ -118,17 +107,60 @@ Standard transformer models \cite{devlin_bert} possess a strict 512-token input 
 \subsection{Meta-Classification Fusion}
 Explicit DOM behavioral heuristics (e.g., DOM depth, externalized form actions) generate a 3-dimensional scalar vector. The outputs are concatenated into an 899-dimensional unified vector and classified by an XGBoost Meta-Classifier \cite{xgboost}, optimized via Optuna \cite{optuna}.
 
-\begin{figure}[htbp]
-\centerline{\includegraphics[width=0.48\textwidth]{visualizations/cnn_xgboost_importance.png}}
-\caption{XGBoost Feature Importance Plot confirming that CNN Structural Features and CodeBERT semantic features are mathematically critical to the CNN classification.}
-\label{fig:xgboost_cnn}
-\end{figure}
+\section{Experimental Setup and The Holdout Vault}
+To prevent Out-of-Memory (OOM) failures and architecture instability, OmniPhish utilizes a strict two-stage training paradigm. First, the structural modalities (CNN1D or GNN) and semantic modality (CodeBERT) are independently pre-trained to extract deep spatial and semantic embeddings. During pre-training, the CodeBERT modality utilized the AdamW optimizer \cite{adamw} with a learning rate of $5 \times 10^{-4}$, while the structural modalities utilized the standard Adam optimizer with a learning rate of $1 \times 10^{-3}$. All modalities were trained with a consistent batch size of 32. These base networks are then frozen, and the latent vectors are extracted to train the XGBoost Meta-Classifier alongside SMOTE. Crucially, the independent pre-training of the base feature extractors was restricted exclusively to the 90\% non-vault training data. To simulate real-world deployment and ensure strict validation integrity, exactly 10\% of the dataset (799 samples) was structurally decoupled into an isolated ``Holdout Vault'' prior to any training or K-Fold splits. This holdout set was rigorously stratified to simulate real-world class imbalances, resulting in an empirical distribution of 566 Phishing to 233 Benign samples (a ratio of approximately 2.43:1). This mitigates temporal leakage and ensures the final evaluation is conducted on completely unseen data.
+
+\section{Results and Evaluation}
+
+\subsection{Generalization and Variance Analysis}
+During the 5-Fold Cross Validation phase, the CNN ensemble demonstrated an average Validation F1-Score of 95.69\% ($\pm$2.10\%). Conversely, the GNN variant demonstrated an incredibly stable Validation F1-Score of 95.90\% ($\pm$0.30\%). The resulting low Variance Drop from the perfect training set indicates that the architecture generalized well to unseen structural routing rather than artificially memorizing the dataset.
+
+\subsection{Baseline Comparison and False Positive Eradication}
+As illustrated in Fig. \ref{fig:baseline_comp}, the OmniPhish ensemble was benchmarked against cutting-edge structural and semantic State-of-the-Art (SOTA) baselines. To ensure rigorous architectural justification against the 799-sample Zero-Day Vault, the ensemble was compared against a Pure Character-Level CNN (HTMLPhish) \cite{htmlphish}, a Long-Context Sparse Transformer (Longformer 4096) \cite{longformer}, and a massive Local Large Language Model (Qwen2.5-Coder 14B) \cite{qwen25} executing zero-shot reasoning on the raw DOM.
 
 \begin{figure}[htbp]
-\centerline{\includegraphics[width=0.48\textwidth]{visualizations/gnn_xgboost_importance.png}}
-\caption{XGBoost Feature Importance Plot for the GNN Architecture, illustrating the robust contribution of topological graph embeddings alongside semantic intent.}
-\label{fig:xgboost_gnn}
+\centerline{\includegraphics[width=0.48\textwidth]{visualizations/baseline_comparison.pdf}}
+\caption{Baseline Comparison demonstrating OmniPhish achieving high F1-Scores while requiring minimal VRAM allocation compared to massive LLM baselines.}
+\label{fig:baseline_comp}
 \end{figure}
+
+As detailed in Table \ref{tab:metrics}, OmniPhish CNN achieved a robust Recall of 99.47\%. Based on the explicit values derived from the confusion matrix, out of 566 active Zero-Day threats, the CNN architecture missed exactly 3 phishing attacks, demonstrating an exceptionally low False Negative Rate. This significantly outperforms the zero-shot capabilities of the 14B LLM (which suffered from severe structural hallucinations and heavily biased toward predicting benign) and provides a substantial reduction in false negatives compared to the Pure Structural CNN and Longformer baselines, ensuring maximum commercial viability. The superior classification performance across varying thresholds is further illustrated by the ROC curves in Fig. \ref{fig:roc_curve}.
+
+\begin{table}[htbp]
+\caption{Performance Metrics on Decoupled Zero-Day Vault}
+\begin{center}
+\resizebox{\columnwidth}{!}{
+\begin{tabular}{|l|c|c|c|c|}
+\hline
+\textbf{Model (SOTA Baselines)} & \textbf{Accuracy} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} \\
+\hline
+\hline
+\hline
+LLM Zero-Shot (Qwen2.5-Coder:14B) & 47.68\% & 94.58\% & 27.74\% & 42.90\% \\
+\hline
+Pure Structural CNN (HTMLPhish) & 91.24\% & 92.03\% & 95.94\% & 93.94\% \\
+\hline
+Long-Context Semantic (Longformer) & 94.24\% & 94.07\% & 98.06\% & 96.02\% \\
+\hline
+\textbf{OmniPhish GNN (Proposed)} & \textbf{93.24\%} & \textbf{93.10\%} & \textbf{97.70\%} & \textbf{95.34\%} \\
+\hline
+\textbf{OmniPhish CNN (Proposed)} & \textbf{98.37\%} & \textbf{98.25\%} & \textbf{99.47\%} & \textbf{98.86\%} \\
+\hline
+\end{tabular}
+}
+\label{tab:metrics}
+\end{center}
+\end{table}
+
+\begin{figure}[htbp]
+\centerline{\includegraphics[width=0.48\textwidth]{visualizations/combined_roc_curve.pdf}}
+\caption{Receiver Operating Characteristic (ROC) curve comparing the CNN and GNN variants against Zero-Day threats.}
+\label{fig:roc_curve}
+\end{figure}
+
+\
+\subsection{Architectural Ablation: Tri-Modal Synergy}
+To rigorously quantify the contribution of each modality within the 899-D structure, an architectural ablation study was conducted (Table \ref{tab:ablation}). To accurately simulate edge-deployment environments and eradicate temporal data leakage, this ablation study evaluated the Meta-Classifier's theoretical upper bound when trained on 100\% of the available non-vault data.
 
 \begin{table}[htbp]
 \caption{Architectural Ablation Study proving Tri-Modal Synergy}
@@ -166,77 +198,31 @@ No Heur (GNN+CodeBERT) & 95.40\% & 95.65\% & 95.16\% & 0.8350 \\
 \end{center}
 \end{table}
 
-\section{Experimental Setup and The Holdout Vault}
-To prevent Out-of-Memory (OOM) failures and architecture instability, OmniPhish utilizes a strict two-stage training paradigm. First, the CNN1D and CodeBERT modalities are independently pre-trained to extract deep spatial and semantic embeddings. During pre-training, both base modalities utilized the AdamW optimizer \cite{adamw} with a learning rate of $5 \times 10^{-4}$ and a batch size of 32. These base networks are then frozen, and the latent vectors are extracted to train the XGBoost Meta-Classifier alongside SMOTE. Crucially, the independent pre-training of the base CNN and CodeBERT feature extractors was restricted exclusively to the 90\% non-vault training data. To simulate real-world deployment and ensure strict validation integrity, exactly 10\% of the dataset (799 samples) was structurally decoupled into an isolated ``Holdout Vault'' prior to any training or K-Fold splits. This holdout set was rigorously stratified to simulate real-world class imbalances, resulting in an empirical distribution of 566 Phishing to 233 Benign samples (a ratio of approximately 2.43:1). This mitigates temporal leakage and ensures the final evaluation is conducted on completely unseen data.
-
-\section{Results and Evaluation}
-
-\subsection{Generalization and Variance Analysis}
-During the 5-Fold Cross Validation phase, the CNN ensemble demonstrated an average Validation F1-Score of 95.69\% ($\pm$2.10\%). Conversely, the GNN variant demonstrated an incredibly stable Validation F1-Score of 95.90\% ($\pm$0.30\%). The resulting low Variance Drop from the perfect training set indicates that the architecture generalized well to unseen structural routing rather than artificially memorizing the dataset.
-
-\begin{figure}[htbp]
-\centerline{\includegraphics[width=0.48\textwidth]{visualizations/baseline_comparison.png}}
-\caption{Baseline Comparison demonstrating OmniPhish achieving high F1-Scores while requiring minimal VRAM allocation compared to massive LLM baselines.}
-\label{fig:baseline_comp}
-\end{figure}
-
-
-\subsection{Baseline Comparison and False Positive Eradication}
-The OmniPhish ensemble was benchmarked against cutting-edge structural and semantic State-of-the-Art (SOTA) baselines. To ensure rigorous architectural justification against the 799-sample Zero-Day Vault, the ensemble was compared against a Pure Character-Level CNN (HTMLPhish) \cite{htmlphish}, a Long-Context Sparse Transformer (Longformer 4096) \cite{longformer}, and a massive Local Large Language Model (Qwen2.5-Coder 14B) \cite{qwen25} executing zero-shot reasoning on the raw DOM.
-
-\begin{table}[htbp]
-\caption{Performance Metrics on Decoupled Zero-Day Vault}
-\begin{center}
-\resizebox{\columnwidth}{!}{
-\begin{tabular}{|l|c|c|c|c|}
-\hline
-\textbf{Model (SOTA Baselines)} & \textbf{Accuracy} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} \\
-\hline
-\hline
-\hline
-LLM Zero-Shot (Qwen2.5-Coder:14B) & 47.68\% & 94.58\% & 27.74\% & 42.90\% \\
-\hline
-Pure Structural CNN (HTMLPhish) & 91.24\% & 92.03\% & 95.94\% & 93.94\% \\
-\hline
-Long-Context Semantic (Longformer) & 94.24\% & 94.07\% & 98.06\% & 96.02\% \\
-\hline
-\textbf{OmniPhish GNN (Proposed)} & \textbf{93.24\%} & \textbf{93.10\%} & \textbf{97.70\%} & \textbf{95.34\%} \\
-\hline
-\textbf{OmniPhish CNN (Proposed)} & \textbf{98.37\%} & \textbf{98.25\%} & \textbf{99.47\%} & \textbf{98.86\%} \\
-\hline
-\end{tabular}
-}
-\label{tab:metrics}
-\end{center}
-\end{table}
-
-As detailed in Table \ref{tab:metrics}, OmniPhish CNN achieved a robust Recall of 99.47\%. Based on the explicit values derived from the confusion matrix, out of 566 active Zero-Day threats, the CNN architecture missed exactly 3 phishing attacks, demonstrating an exceptionally low False Negative Rate. This significantly outperforms the zero-shot capabilities of the 14B LLM (which suffered from severe structural hallucinations and heavily biased toward predicting benign) and provides a substantial reduction in false negatives compared to the Pure Structural CNN and Longformer baselines, ensuring maximum commercial viability.
-
-\begin{figure}[htbp]
-\centerline{\includegraphics[width=0.48\textwidth]{visualizations/combined_roc_curve.png}}
-\caption{Receiver Operating Characteristic (ROC) curve comparing the CNN and GNN variants against Zero-Day threats.}
-\label{fig:roc_curve}
-\end{figure}
-
-
-\subsection{Architectural Ablation: Tri-Modal Synergy}
-To rigorously quantify the contribution of each modality within the 899-D structure, an architectural ablation study was conducted (Table \ref{tab:ablation}). To accurately simulate edge-deployment environments and eradicate temporal data leakage, this ablation study evaluated the Meta-Classifier's theoretical upper bound when trained on 100\% of the available non-vault data.
-
 The ablation results mathematically prove the existence of Tri-Modal Synergy for the CNN, but reveal a paradoxical conflict within the GNN. For the CNN, integrating CodeBERT retains the absolute maximum F1-Score (99.21\%) while shifting the balance to act as a critical \textit{semantic intent filter} that increases Precision (99.47\% to 99.65\%). Conversely, for the GNN architecture, the ablation proves that extracting topological graph features actually introduces noise when fused with semantic CodeBERT intent. We theorize this is due to "over-smoothing"; modern Single Page Applications (SPAs) built on frameworks like React and Vue dynamically generate massive, deeply nested, and highly repetitive DOM structures. When a GNN performs neighborhood aggregation across these dense topologies, its message-passing framework causes representations to converge to an indistinguishable, homogenous state. When this smoothed vector is concatenated with a highly granular CodeBERT vector, it acts as regularizing noise rather than providing distinct spatial cues, ultimately confusing the decision boundary. Removing the GNN entirely actively increases the ensemble's F1-Score from 95.40\% to 95.91\%. Ultimately, the CNN's linear spatial sequence proves to the definitive structural modality, harmonizing perfectly with semantic and heuristic features to yield the highest mathematically verifiable performance.
 
 \subsection{Feature Importance and Explainability}
 Explainable AI (XAI) is critical for enterprise security auditing. To validate the findings of the ablation study, XGBoost feature weights (utilizing native gradient-based weight and gain metrics) were extracted for both variants. As seen in Fig. \ref{fig:xgboost_cnn} and Fig. \ref{fig:xgboost_gnn}, structural features dominate the top decision nodes for both models, confirming that the ensemble learned to heavily prioritize structural layout anomalies while still relying on semantic JavaScript text for precision filtering.
 
-
-\subsection{Comparative Analysis: CNN vs. GNN Architecture}
-A rigorous evaluation between the proposed 1D-CNN and Graph Neural Network (GNN) architectures was conducted against the isolated Zero-Day vault. While the GNN structurally models the HTML DOM as a complex directed graph, the CNN processes the DOM linearly. The CNN Architecture proved definitive for enterprise security due to its near-flawless 0.53\% False Negative Rate (missing only 3 out of 566 attacks). Conversely, the GNN Architecture proved effective at recognizing legitimate web applications, but suffered a 2.30\% False Negative Rate due to topological graph-feature noise.
+\begin{figure}[htbp]
+\centerline{\includegraphics[width=0.48\textwidth]{visualizations/cnn_xgboost_importance.pdf}}
+\caption{XGBoost Feature Importance Plot confirming that CNN Structural Features and CodeBERT semantic features are mathematically critical to the CNN classification.}
+\label{fig:xgboost_cnn}
+\end{figure}
 
 \begin{figure}[htbp]
-\centerline{\includegraphics[width=0.45\textwidth]{visualizations/architecture_radar_chart.png}}
+\centerline{\includegraphics[width=0.48\textwidth]{visualizations/gnn_xgboost_importance.pdf}}
+\caption{XGBoost Feature Importance Plot for the GNN Architecture, illustrating the robust contribution of topological graph embeddings alongside semantic intent.}
+\label{fig:xgboost_gnn}
+\end{figure}
+
+\subsection{Comparative Analysis: CNN vs. GNN Architecture}
+A rigorous evaluation between the proposed 1D-CNN and Graph Neural Network (GNN) architectures was conducted against the isolated Zero-Day vault. The performance disparities across all core classification metrics are visualized in the radar chart in Fig. \ref{fig:radar_chart}. While the GNN structurally models the HTML DOM as a complex directed graph, the CNN processes the DOM linearly. The CNN Architecture proved definitive for enterprise security due to its near-flawless 0.53\% False Negative Rate (missing only 3 out of 566 attacks). Conversely, the GNN Architecture proved effective at recognizing legitimate web applications, but suffered a 2.30\% False Negative Rate due to topological graph-feature noise.
+
+\begin{figure}[htbp]
+\centerline{\includegraphics[width=0.45\textwidth]{visualizations/architecture_radar_chart.pdf}}
 \caption{Radar chart comparing the 5 core classification metrics between the sequential CNN and topological GNN.}
 \label{fig:radar_chart}
 \end{figure}
-
 
 \subsection{Computational Performance with GPU Acceleration}
 To validate the ensemble's viability for high-performance enterprise deployments, inference latency and peak memory utilization were profiled in a modern hardware-accelerated environment. The CUDA-optimized pipeline demonstrates exceptional efficiency. As detailed in Table \ref{tab:hardware}, the CNN architecture executes with an average end-to-end inference latency of just 93.79 ms per URL, utilizing 1.8 GB of VRAM. The GNN architecture, while computationally heavier, processes URLs in 95.28 ms, utilizing $\sim$2.9 GB of VRAM. The CNN processes the DOM with a linear time complexity of $\mathcal{O}(N)$ (where $N$ represents the sequential HTML sequence length), whereas the GNN operates at $\mathcal{O}(V+E)$ (mapping the HTML tags to $V$ vertices and $E$ relational edges), intrinsically requiring more memory. This guarantees the ensemble's capability to process thousands of requests per second within enterprise networks without creating a computational bottleneck.
@@ -273,7 +259,7 @@ While the 8,000-sample dataset provides a rigorously curated proof-of-concept ag
 \bibitem{sahingoz} O. K. Sahingoz, E. Buber, O. Demir, and B. Diri, ``Machine learning based phishing detection from URLs,'' \textit{Expert Systems with Applications}, vol. 117, pp. 345–357, 2019.
 \bibitem{phishbert_2025} Mohammed Tawfik, Ashraf A. Abu-Ein, Amr H. Abdelhaliem, Y. Al-Sharo, and Islam S. Fathi, ``Explainable few-shot learning with modern BERT for detecting emerging phishing attacks using XF PhishBERT,'' \textit{Scientific Reports}, 2025.
 \bibitem{htmlphish} C. Opara, Y. Wei, and Y. Chen, ``HTMLPhish: Enabling phishing web page detection by applying deep learning techniques on HTML analysis,'' in \textit{2020 International Joint Conference on Neural Networks (IJCNN)}, IEEE, 2020, pp. 6906–6913.
-\bibitem{zhang_gnn} T. Song, P. Casas, and M. Meo, ``Phishing the Phishers with SpecularNet: Hierarchical Graph Autoencoding for Reference-Free Web Phishing Detection,'' \textit{arXiv preprint arXiv:2603.01874}, 2026.
+\bibitem{wu_gnn_survey} Z. Wu, S. Pan, F. Chen, G. Long, C. Zhang, and P. S. Yu, ``A Comprehensive Survey on Graph Neural Networks,'' \textit{IEEE Transactions on Neural Networks and Learning Systems}, vol. 32, no. 1, pp. 4-24, 2020.
 \bibitem{kipf_gcn} T. N. Kipf and M. Welling, ``Semi-Supervised Classification with Graph Convolutional Networks,'' in \textit{5th International Conference on Learning Representations (ICLR)}, 2017.
 \bibitem{dos_and_donts} D. Arp et al., ``Dos and Don'ts of Machine Learning in Computer Security,'' in \textit{31st USENIX Security Symposium (USENIX Security 22)}, 2022, pp. 3971-3988.
 \bibitem{tranco} V. Le Pochat et al., ``Tranco: A Research-Oriented Top Sites Ranking Hardened Against Manipulation,'' in \textit{26th Annual Network and Distributed System Security Symposium (NDSS)}, 2019.
@@ -289,8 +275,8 @@ While the 8,000-sample dataset provides a rigorously curated proof-of-concept ag
 \bibitem{xgboost} T. Chen and C. Guestrin, ``XGBoost: A Scalable Tree Boosting System,'' in \textit{Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining}, 2016, pp. 785–794.
 \bibitem{optuna} T. Akiba, S. Sano, T. Yanase, T. Ohta, and M. Koyama, ``Optuna: A Next-generation Hyperparameter Optimization Framework,'' in \textit{Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery \& Data Mining}, 2019, pp. 2623–2631.
 \bibitem{netphishmix} ``NetPhish-Mix: A Heterogeneous Graph Transformer and Vision Transformer Fusion for Phishing Detection,'' \textit{Engineering, Technology \& Applied Science Research}, 2026.
-\bibitem{lightphishai} G. Lakshmi and P. Swetha, ``LightPhishAI: Lightweight Multimodal Interpretable Phishing Detection Framework for IoT Environments,'' \textit{International Journal of Electronics and Communication Engineering}, 2026.
-\bibitem{semanticphishnet} ``Phishing URL Detection Using Transformer-Based Architecture and Contextual Content Features,'' \textit{Computers}, 2026.
+\bibitem{lightphishai} G. Lakshmi and P. Swetha, ``LightPhishAI: A Lightweight Multimodal Feature Extraction and Fusion Framework for Real-Time Phishing Detection on IoT Devices,'' \textit{International Journal of Electronics and Communication Engineering}, 2026.
+\bibitem{webphish} C. Opara, Y. Chen, and B. Wei, ``Look Before You Leap: Detecting Phishing Web Pages by Exploiting Raw URL and HTML Characteristics,'' \textit{Expert Systems with Applications}, vol. 225, 2023.
 \end{thebibliography}
 
 \end{document}

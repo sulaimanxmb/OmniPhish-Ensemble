@@ -2,6 +2,11 @@
 
 This repository contains the official implementation of the **OmniPhish 1D-CNN Stacking Ensemble**, designed for highly evasive, zero-day phishing URL detection. This architecture mathematically outperformed traditional ML baselines by fusing Deep Semantic representations (CodeBERT) with Structural Sequence modeling (1D-CNN) and explicit heuristic feature extraction.
 
+### 🌐 Public Resources & Live Demo
+- **Live Interactive Demo (Gradio):** [Hugging Face Spaces](https://huggingface.co/spaces/XMB480/Omniphish)
+- **Pre-Trained Model Weights:** [Hugging Face Model Hub](https://huggingface.co/XMB480/OmniPhish-Ensemble)
+- **Official Training Dataset:** [OmniPhish Dataset v1 on Kaggle](https://www.kaggle.com/datasets/sulaimaneksambi/omniphish-dataset-v1)
+
 ### Architecture Overview (main branch)
 - **Semantic Engine:** Microsoft CodeBERT (Fine-tuned via Low-Rank Adaptation - LoRA)
 - **Structural Engine:** 1D Convolutional Neural Network (1D-CNN) processing raw HTML sequences
@@ -20,11 +25,11 @@ The entire system is completely automated via the master pipeline script.
    pip install -r requirements.txt
    ```
 
-2. **Execute the Master Pipeline:**
+2. **Execute the Master Pipeline (Reproduce all metrics):**
    ```bash
    python run_pipeline.py
    ```
-   *The pipeline will automatically prompt you to choose your training mode (Fast vs. Strict Isolation Slow Mode) and select which mathematical visualizations you want to generate. It will also automatically execute the baseline comparison scripts.*
+   *The pipeline will automatically prompt you to choose your training mode (Fast vs. Strict Isolation Slow Mode) and select which mathematical visualizations you want to generate. Once training is complete, the script will systematically test the ensemble against the isolated Zero-Day Vault and output the final Recall, Precision, F1-Score, and Accuracy metrics directly to your terminal. All raw metrics and generated PR/ROC curves will be automatically saved in the `metrics/` and `visualizations/` directories.*
 
 ### 🤖 Running Independent Baselines (For IEEE Paper)
 To independently verify the baseline metrics without running the full OmniPhish pipeline, you can execute them individually. Note that these scripts output their results to the terminal and include **Peak VRAM** tracking.
