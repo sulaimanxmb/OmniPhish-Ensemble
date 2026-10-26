@@ -69,15 +69,26 @@ def train_htmlphish():
         'benign': 'dataset/raw_html/benign'
     }
     
-    full_dataset = PhishingDataset(dirs, undersample_benign=True)
-    
-    # 10% Zero-Day Vault split
-    vault_size = int(len(full_dataset) * 0.10)
-    train_val_size = len(full_dataset) - vault_size
-    train_val_dataset, vault_dataset = torch.utils.data.random_split(
-        full_dataset, [train_val_size, vault_size], 
-        generator=torch.Generator().manual_seed(42)
-    )
+    vault_json_path = "weights/vault_files.json"
+    train_json_path = "weights/train_val_files.json"
+    if os.path.exists(vault_json_path) and os.path.exists(train_json_path):
+        import json
+        with open(vault_json_path, 'r', encoding='utf-8') as f:
+            vault_file_list = json.load(f)
+        with open(train_json_path, 'r', encoding='utf-8') as f:
+            train_file_list = json.load(f)
+        train_val_dataset = PhishingDataset(dirs, file_list=train_file_list)
+        vault_dataset = PhishingDataset(dirs, file_list=vault_file_list)
+        print(f"[*] Synchronized with Master Zero-Day Vault ({len(vault_dataset)} samples).")
+    else:
+        full_dataset = PhishingDataset(dirs, undersample_benign=False)
+        # 10% Zero-Day Vault split
+        vault_size = int(len(full_dataset) * 0.10)
+        train_val_size = len(full_dataset) - vault_size
+        train_val_dataset, vault_dataset = torch.utils.data.random_split(
+            full_dataset, [train_val_size, vault_size], 
+            generator=torch.Generator().manual_seed(42)
+        )
     
     # Multiprocessing on Windows requires __main__ guard, which we have.
     # Set num_workers=0 to prevent potential IPC issues during simple baseline run

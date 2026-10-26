@@ -1,4 +1,6 @@
 import os
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
 import torch
 import torch.nn as nn
 from transformers import AutoTokenizer, RobertaModel
@@ -13,8 +15,12 @@ class CodeBERTEmbedding(nn.Module):
         super(CodeBERTEmbedding, self).__init__()
         # CRITICAL FIX: AutoTokenizer automatically loads the Rust-based Fast Tokenizer
         # The pure Python RobertaTokenizer takes O(N^2) time on large HTML strings.
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.codebert = RobertaModel.from_pretrained(model_name)
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
+            self.codebert = RobertaModel.from_pretrained(model_name, local_files_only=True)
+        except Exception:
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+            self.codebert = RobertaModel.from_pretrained(model_name)
         
         # Freeze CodeBERT to save memory, as it acts as a static feature extractor
         for param in self.codebert.parameters():

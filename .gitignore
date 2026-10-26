@@ -28,15 +28,27 @@ weights*/
 
 # Logs
 *.log
+pipeline_logs/
 
-# Project specific ignores
-top-1m.txt
+# Binary & Cache Files
+*.npz
+
+# Locked IEEE Paper Manuscripts
+Paper.pdf
+Paper.tex
 *.pdf
-!Paper.tex
+
 Project_Summary_For_Research_Paper.md
-# allow specific visualizations but ignore others
+Compare_result.md
+
+# Allow specific visualizations
 !visualizations/
 !visualizations/*.png
+!visualizations/*.pdf
+!Visualizations/
+!Visualizations/*.png
+!Visualizations/*.pdf
+
 *_temp.py
 baseline_predict.py
 doit.py

@@ -74,13 +74,21 @@ def run_llm_zeroshot():
         'benign': 'dataset/raw_html/benign'
     }
     
-    full_dataset = PhishingDataset(dirs, undersample_benign=True)
-    vault_size = int(len(full_dataset) * 0.10)
-    train_val_size = len(full_dataset) - vault_size
-    _, vault_dataset = torch.utils.data.random_split(
-        full_dataset, [train_val_size, vault_size], 
-        generator=torch.Generator().manual_seed(42)
-    )
+    vault_json_path = "weights/vault_files.json"
+    if os.path.exists(vault_json_path):
+        import json
+        with open(vault_json_path, 'r', encoding='utf-8') as f:
+            vault_file_list = json.load(f)
+        vault_dataset = PhishingDataset(dirs, file_list=vault_file_list)
+        print(f"[*] Synchronized with Master Zero-Day Vault ({len(vault_dataset)} samples).")
+    else:
+        full_dataset = PhishingDataset(dirs, undersample_benign=False)
+        vault_size = int(len(full_dataset) * 0.10)
+        train_val_size = len(full_dataset) - vault_size
+        _, vault_dataset = torch.utils.data.random_split(
+            full_dataset, [train_val_size, vault_size], 
+            generator=torch.Generator().manual_seed(42)
+        )
     
     vault_loader = DataLoader(vault_dataset, batch_size=1, shuffle=False, collate_fn=custom_collate)
     

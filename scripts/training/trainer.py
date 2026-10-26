@@ -29,6 +29,15 @@ def set_seed(seed=42):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     os.environ['PYTHONHASHSEED'] = str(seed)
+    os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
+
+def seed_worker(worker_id):
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+
+g_gen = torch.Generator()
+g_gen.manual_seed(42)
 
 def verify_cuda_installation():
     """Checks if an NVIDIA GPU exists but PyTorch was installed without CUDA."""
@@ -217,6 +226,7 @@ def objective(trial, X_train, y_train, X_val, y_val):
         'n_estimators': trial.suggest_int('xgb_n_estimators', 50, 300),
         'subsample': trial.suggest_float('xgb_subsample', 0.5, 1.0),
         'tree_method': 'hist',
+        'random_state': 42,
         'device': 'cuda' if torch.cuda.is_available() else 'cpu'
     }
     meta = MetaClassifier(use_logistic_regression=False, xgb_params=xgb_params)
@@ -228,7 +238,7 @@ def train_model(batch_size=32, n_optuna_trials=10, n_splits=5):
     device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     print(f"Training on device: {device}")
     
-    import csv
+    import csv, json
     mode = get_training_mode()
     
     dirs = {'phishing': 'dataset/raw_html/phishing', 'benign': 'dataset/raw_html/benign'}
@@ -248,7 +258,16 @@ def train_model(batch_size=32, n_optuna_trials=10, n_splits=5):
     train_val_idx, vault_idx = train_test_split(all_indices, test_size=0.1, stratify=all_labels, random_state=42)
     os.makedirs("weights", exist_ok=True)
     np.save("weights/vault_indices.npy", vault_idx)
-    print(f"[*] Locked {len(vault_idx)} samples into the Zero-Day Vault.")
+    
+    # CRITICAL FIX: Save exact persistent filepaths so all scripts/baselines evaluate on the exact same files
+    vault_files = [dataset.samples[i] for i in vault_idx]
+    train_val_files = [dataset.samples[i] for i in train_val_idx]
+    with open("weights/vault_files.json", "w", encoding="utf-8") as f:
+        json.dump(vault_files, f, indent=2)
+    with open("weights/train_val_files.json", "w", encoding="utf-8") as f:
+        json.dump(train_val_files, f, indent=2)
+        
+    print(f"[*] Locked {len(vault_idx)} samples into the Zero-Day Vault (saved to weights/vault_files.json).")
     print(f"[*] Remaining {len(train_val_idx)} samples will be used for K-Fold CV.")
     
     # We create a Subset of the dataset that excludes the vault
@@ -256,7 +275,7 @@ def train_model(batch_size=32, n_optuna_trials=10, n_splits=5):
     train_val_labels = all_labels[train_val_idx]
     
     # For global fast extraction, we only want to extract on the train_val dataset
-    train_val_loader = DataLoader(train_val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True)
+    train_val_loader = DataLoader(train_val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True, worker_init_fn=seed_worker, generator=g_gen)
     
     cb_feats, heuristics = None, None
     if mode == "fast":
@@ -264,7 +283,7 @@ def train_model(batch_size=32, n_optuna_trials=10, n_splits=5):
         print("🚀 PHASE 1: GLOBAL CODEBERT PEFT & PRE-EXTRACTION")
         print("="*50)
         codebert = CodeBERTEmbedding(use_lora=True).to(device)
-        train_codebert_lora(DataLoader(train_val_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True), codebert, device, epochs=1)
+        train_codebert_lora(DataLoader(train_val_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True, worker_init_fn=seed_worker, generator=g_gen), codebert, device, epochs=1)
         cb_feats, heuristics, _ = global_pre_extract_codebert_heuristics(train_val_loader, codebert, device)
         
     # Prepare CSV for Variance logging
@@ -290,7 +309,7 @@ def train_model(batch_size=32, n_optuna_trials=10, n_splits=5):
         opt_val_subset = Subset(train_val_dataset, opt_val_idx)
         test_subset = Subset(train_val_dataset, test_idx)
         
-        sub_train_loader_shuffled = DataLoader(sub_train_subset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True)
+        sub_train_loader_shuffled = DataLoader(sub_train_subset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True, worker_init_fn=seed_worker, generator=g_gen)
         
         # Train CNN strictly on Sub_Train
         print("[*] Training CNN specifically on Sub_Train (Isolating Optuna Validation)...")
@@ -363,6 +382,7 @@ def train_model(batch_size=32, n_optuna_trials=10, n_splits=5):
             'n_estimators': best['xgb_n_estimators'],
             'subsample': best['xgb_subsample'],
             'tree_method': 'hist',
+            'random_state': 42,
             'device': 'cuda' if torch.cuda.is_available() else 'cpu'
         }
         
@@ -383,6 +403,9 @@ def train_model(batch_size=32, n_optuna_trials=10, n_splits=5):
                 torch.save(codebert_fold.state_dict(), "weights/codebert_trained.pt")
             else:
                 torch.save(codebert.state_dict(), "weights/codebert_trained.pt")
+            import pickle
+            with open("weights/scaler.pkl", "wb") as f:
+                pickle.dump(scaler, f)
                 
         # Evaluate on Validation (Test Fold)
         preds_val = [meta.predict(x) for x in X_test_scaled_final]

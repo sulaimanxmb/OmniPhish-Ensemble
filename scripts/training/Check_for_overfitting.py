@@ -1,5 +1,8 @@
 import sys, os; sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 import os
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
+import random
 import argparse
 import numpy as np
 import pandas as pd
@@ -17,6 +20,21 @@ from omniphish.cnn_model import CNN1DEmbedding
 from omniphish.gnn_model import GNNEmbedding
 from omniphish.transformer_model import CodeBERTEmbedding
 from omniphish.classifier import MetaClassifier
+
+def set_seed(seed=42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        torch.mps.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
+
+set_seed(42)
 
 def analyze_kfold_variance():
     print("\n" + "="*60)
@@ -61,25 +79,29 @@ def test_zero_day_vault(model_type):
     print("="*60)
     
     weights_dir = f"weights_{model_type}" if os.path.exists(f"weights_{model_type}") else "weights"
+    vault_json_path = f"{weights_dir}/vault_files.json" if os.path.exists(f"{weights_dir}/vault_files.json") else "weights/vault_files.json"
     
-    if not os.path.exists(f"{weights_dir}/vault_indices.npy"):
-        # Fallback to general weights directory if not in backup
-        if os.path.exists("weights/vault_indices.npy"):
-            weights_dir = "weights"
-        else:
-            print(f"[!] Error: 'vault_indices.npy' not found. Ensure trainer.py isolated the vault.")
-            return
+    dirs = {'phishing': 'dataset/raw_html/phishing', 'benign': 'dataset/raw_html/benign'}
+    if os.path.exists(vault_json_path):
+        import json
+        with open(vault_json_path, 'r', encoding='utf-8') as f:
+            vault_file_list = json.load(f)
+        vault_dataset = PhishingDataset(dirs, undersample_benign=False, file_list=vault_file_list)
+        print(f"[*] Loaded {len(vault_dataset)} isolated Zero-Day samples strictly from '{vault_json_path}'.")
+    elif os.path.exists(f"{weights_dir}/vault_indices.npy") or os.path.exists("weights/vault_indices.npy"):
+        v_path = f"{weights_dir}/vault_indices.npy" if os.path.exists(f"{weights_dir}/vault_indices.npy") else "weights/vault_indices.npy"
+        vault_idx = np.load(v_path)
+        dataset = PhishingDataset(dirs, undersample_benign=False)
+        vault_dataset = Subset(dataset, vault_idx)
+        print(f"[*] Loaded {len(vault_idx)} isolated Zero-Day samples from index array '{v_path}'.")
+    else:
+        print(f"[!] Error: Neither 'vault_files.json' nor 'vault_indices.npy' found. Ensure trainer.py isolated the vault.")
+        return
         
     device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     print(f"[*] Running inference on device: {device} loading from {weights_dir}/")
     
-    vault_idx = np.load(f"{weights_dir}/vault_indices.npy")
-    print(f"[*] Loaded {len(vault_idx)} isolated Zero-Day samples from the Vault.")
-    
-    dirs = {'phishing': 'dataset/raw_html/phishing', 'benign': 'dataset/raw_html/benign'}
-    dataset = PhishingDataset(dirs, undersample_benign=False)
-    vault_subset = Subset(dataset, vault_idx)
-    vault_loader = DataLoader(vault_subset, batch_size=32, shuffle=False, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True)
+    vault_loader = DataLoader(vault_dataset, batch_size=32, shuffle=False, collate_fn=custom_collate, num_workers=4 if os.name == 'nt' else 8, pin_memory=True, persistent_workers=True)
     
     # 1. Load Models
     print(f"[*] Loading trained Neural Networks and Meta-Classifier for {model_type.upper()}...")
@@ -173,7 +195,7 @@ def test_zero_day_vault(model_type):
     
     # Calculate Latency & RAM
     total_time_seconds = end_time - start_time
-    total_samples = len(vault_idx)
+    total_samples = len(vault_dataset)
     ms_per_url = (total_time_seconds / total_samples) * 1000
     process = psutil.Process(os.getpid())
     peak_ram_mb = process.memory_info().rss / (1024 * 1024)

@@ -7,6 +7,8 @@ import pandas as pd
 import torch
 import xgboost as xgb
 import shap
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.manifold import TSNE
@@ -17,11 +19,29 @@ from sklearn.preprocessing import StandardScaler
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
-import os
+def set_seed(seed=42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        torch.mps.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
+
+set_seed(42)
+
 OUTPUT_DIR = "visualizations"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 def save_visualization(filename, model_type=None):
+    if filename.lower() == 'architecture.pdf':
+        print(f"    [*] Protected architectural diagram: '{filename}' preserved permanently.")
+        return
+        
     if model_type and filename != 'baseline_comparison.pdf':
         filename = f"{model_type}_{filename}"
         
@@ -60,11 +80,14 @@ def generate_xgboost_importance(model_type):
 
     meta.xgb_model.get_booster().feature_names = get_feature_names(model_type)
 
-    plt.figure(figsize=(10, 8))
-    xgb.plot_importance(meta.xgb_model, max_num_features=20, importance_type="weight", 
-                        title=f"Top 20 Ensemble Features (XGBoost - {model_type.upper()})", 
-                        color="#1f77b4", grid=False)
-    plt.tight_layout()
+    plt.figure(figsize=(10, 7.5))
+    ax = plt.gca()
+    xgb.plot_importance(meta.xgb_model, ax=ax, max_num_features=20, importance_type="weight", 
+                        title=f"Top Ensemble Features (XGBoost - {model_type.upper()})", 
+                        color="#1f77b4", grid=False, show_values=True)
+    x_max = ax.get_xlim()[1]
+    ax.set_xlim(0, x_max * 1.18)
+    plt.subplots_adjust(left=0.28, right=0.92, top=0.90, bottom=0.10)
     save_visualization('xgboost_importance.pdf', model_type)
 
 def generate_smote_pca(model_type):
@@ -77,8 +100,9 @@ def generate_smote_pca(model_type):
     benign_indices = [i for i, label in enumerate(dataset.labels) if label == 0]
     phish_indices = [i for i, label in enumerate(dataset.labels) if label == 1]
     
-    selected_benign = random.sample(benign_indices, min(50, len(benign_indices)))
-    selected_phish = random.sample(phish_indices, min(250, len(phish_indices)))
+    rng = random.Random(42)
+    selected_benign = rng.sample(benign_indices, min(50, len(benign_indices)))
+    selected_phish = rng.sample(phish_indices, min(250, len(phish_indices)))
     
     imbalanced_idx = selected_benign + selected_phish
     imbalanced_subset = Subset(dataset, imbalanced_idx)
@@ -162,8 +186,8 @@ def generate_smote_pca(model_type):
     axes[0].legend()
     axes[0].grid(True, alpha=0.3)
     
-    axes[1].scatter(X_bal_pca[y_balanced == 0, 0], X_bal_pca[y_balanced == 0, 1], c='blue', alpha=0.6, label='Benign (0)', edgecolors='w', s=50)
-    axes[1].scatter(X_bal_pca[y_balanced == 1, 0], X_bal_pca[y_balanced == 1, 1], c='red', alpha=0.9, label='Phishing (Synthetic & Real)', edgecolors='w', s=50)
+    axes[1].scatter(X_bal_pca[y_balanced == 0, 0], X_bal_pca[y_balanced == 0, 1], c='blue', alpha=0.6, label='Benign (Real & Synthetic Balanced)', edgecolors='w', s=50)
+    axes[1].scatter(X_bal_pca[y_balanced == 1, 0], X_bal_pca[y_balanced == 1, 1], c='red', alpha=0.9, label='Phishing (Real Majority)', edgecolors='w', s=50)
     axes[1].set_title('After SMOTE (Synthetically Balanced)', fontweight='bold', fontsize=14)
     axes[1].set_xlabel('Principal Component 1')
     axes[1].set_ylabel('Principal Component 2')
@@ -355,7 +379,7 @@ def generate_inference_based_graphs(choices, model_type):
             shap_values = explainer.shap_values(X_shap)
             
             plt.figure(figsize=(12, 8))
-            shap.summary_plot(shap_values, X_shap, feature_names=get_feature_names(), show=False, max_display=15)
+            shap.summary_plot(shap_values, X_shap, feature_names=get_feature_names(model_type), show=False, max_display=15)
             plt.title("SHAP Global Feature Explainability", fontweight='bold', pad=15)
             plt.tight_layout()
             save_visualization('shap_summary.pdf')
@@ -444,10 +468,10 @@ def generate_radar_chart():
 def generate_baseline_comparison():
     print("\n[*] Generating Baseline Comparison (F1-Score vs. Peak VRAM)...")
     
-    # Metrics from FINAL_METRICS.md
+    # Metrics matching IEEE Paper Table I and Table III
     models = ['OmniPhish (CNN)', 'OmniPhish (GNN)', 'HTMLPhish', 'Longformer', 'Qwen2.5-Coder']
-    f1_scores = [96.19, 94.26, 95.42, 95.99, 43.21]
-    vrams = [2.99, 3.03, 0.64, 11.56, 9.50]  # in GB.
+    f1_scores = [98.86, 95.34, 93.94, 96.02, 42.90]
+    vrams = [1.80, 2.96, 0.64, 11.56, 9.50]  # in GB.
     
     fig, ax1 = plt.subplots(figsize=(10, 6))
     
@@ -459,7 +483,7 @@ def generate_baseline_comparison():
     
     ax1.set_ylabel('F1-Score Percentage (%)', fontweight='bold', color='#2ca02c')
     ax1.tick_params(axis='y', labelcolor='#2ca02c')
-    ax1.set_ylim(0, 110)
+    ax1.set_ylim(0, 115)
     ax1.set_xticks(x)
     ax1.set_xticklabels(models, rotation=15, ha='right', fontweight='bold')
     
@@ -469,7 +493,7 @@ def generate_baseline_comparison():
     
     ax2.set_ylabel('Peak VRAM (Gigabytes)', fontweight='bold', color='red')
     ax2.tick_params(axis='y', labelcolor='red')
-    ax2.set_ylim(0, 13)
+    ax2.set_ylim(0, 14)
     
     # Add values on top of bars
     for rect in rects1:
@@ -483,15 +507,15 @@ def generate_baseline_comparison():
     # Add values on points
     for i, txt in enumerate(vrams):
         if models[i] == 'Longformer':
-            ax2.annotate(f'{txt}GB', (x[i], vrams[i]), textcoords="offset points", xytext=(0,-15), ha='center', va='top', fontweight='bold', color='red')
+            ax2.annotate(f'{txt}GB', (x[i], vrams[i]), textcoords="offset points", xytext=(15, 6), ha='left', va='bottom', fontweight='bold', color='red')
         else:
-            ax2.annotate(f'{txt}GB', (x[i], vrams[i]), textcoords="offset points", xytext=(0,10), ha='center', va='bottom', fontweight='bold', color='red')
+            ax2.annotate(f'{txt}GB', (x[i], vrams[i]), textcoords="offset points", xytext=(0, 8), ha='center', va='bottom', fontweight='bold', color='red')
         
     plt.title('Baseline Architectural Comparison (F1-Score vs. Hardware Efficiency)', fontweight='bold', pad=15)
     
     lines, labels = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
-    ax2.legend(lines + lines2, labels + labels2, loc='center right')
+    ax2.legend(lines + lines2, labels + labels2, loc='upper center', bbox_to_anchor=(0.5, 0.98), ncol=2)
     
     plt.tight_layout()
     save_visualization('baseline_comparison.pdf')
@@ -562,19 +586,6 @@ if __name__ == "__main__":
     parser.add_argument("--model", type=str, choices=["cnn", "gnn", "both"], default="both", help="Which model to evaluate (default: both)")
     args, unknown = parser.parse_known_args()
     
-    # Delete everything in OUTPUT_DIR before starting
-    print(f"\n[*] Clearing existing files in {OUTPUT_DIR}...")
-    import shutil
-    for filename in os.listdir(OUTPUT_DIR):
-        filepath = os.path.join(OUTPUT_DIR, filename)
-        try:
-            if os.path.isfile(filepath) or os.path.islink(filepath):
-                os.unlink(filepath)
-            elif os.path.isdir(filepath):
-                shutil.rmtree(filepath)
-        except Exception as e:
-            print(f"Failed to delete {filepath}. Reason: {e}")
-
     print("="*60)
     print(f"📸 OMNIPHISH VISUALIZATION SUITE ({args.model.upper()})")
     print("="*60)

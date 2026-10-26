@@ -1,4 +1,5 @@
 import os
+import zlib
 import torch
 import numpy as np
 from bs4 import BeautifulSoup
@@ -24,8 +25,8 @@ def extract_dom_graph(soup, max_nodes=1024):
         current_idx = len(nodes)
         
         tag_name = element.name if element.name else "text"
-        # simple hash for tag
-        tag_id = (hash(tag_name) % 255) + 1
+        # Deterministic CRC32 tag ID to prevent Python process hash randomization
+        tag_id = (zlib.crc32(tag_name.encode('utf-8')) % 255) + 1
         nodes.append(tag_id)
         
         if parent_idx != -1:
@@ -81,26 +82,43 @@ def get_dom_depth_stats(soup):
     return float(max_depth), float(avg_depth)
 
 class PhishingDataset(Dataset):
-    def __init__(self, raw_html_dirs, undersample_benign=False):
+    def __init__(self, raw_html_dirs, undersample_benign=False, file_list=None):
         """
         raw_html_dirs: Dict -> {'phishing': 'path', 'benign': 'path'}
         undersample_benign: If True, specifically truncates benign data to match phishing natively in RAM.
+        file_list: Optional list of explicit file paths to load directly (e.g. frozen vault).
         """
         import random
+        rng = random.Random(42)
         
+        if file_list is not None:
+            self.samples = []
+            self.labels = []
+            for item in file_list:
+                if isinstance(item, (list, tuple)):
+                    fpath, lbl = item
+                else:
+                    fpath = item
+                    # Infer label from path
+                    lbl = 1 if 'phishing' in fpath.lower() else 0
+                self.samples.append(os.path.normpath(fpath))
+                self.labels.append(int(lbl))
+            return
+
         phish_samples = []
         benign_samples = []
         
-        for class_label, folder_path in raw_html_dirs.items():
+        # Sort keys to ensure dictionary iteration order is strictly deterministic
+        for class_label in sorted(raw_html_dirs.keys()):
+            folder_path = raw_html_dirs[class_label]
             # Resolve absolute path to prevent Windows Multiprocessing Errno 22 crashes
             folder_path = os.path.abspath(folder_path)
             if not os.path.exists(folder_path):
                 continue
             
-            files = [f for f in os.listdir(folder_path) if f.endswith(".html")]
+            # CRITICAL FIX: Sort directory listing to eliminate filesystem / OS non-determinism
+            files = sorted([f for f in os.listdir(folder_path) if f.endswith(".html")])
             
-            # No artificial capping applied; utilizing the full Phishing dataset.
-                
             for filename in files:
                 # Store absolute normalized paths
                 filepath = os.path.normpath(os.path.join(folder_path, filename))
@@ -111,15 +129,15 @@ class PhishingDataset(Dataset):
                         
         if undersample_benign and len(phish_samples) < len(benign_samples):
             print(f"\n[PyTorch Pre-Loader] Slicing Benign memory footprint from {len(benign_samples)} down to {len(phish_samples)} to maintain symmetry!")
-            random.shuffle(benign_samples)
+            rng.shuffle(benign_samples)
             benign_samples = benign_samples[:len(phish_samples)]
             
         self.samples = phish_samples + benign_samples
         self.labels = [1] * len(phish_samples) + [0] * len(benign_samples)
         
-        # Formulate and cleanly shuffle the exact sequences for PyTorch to consume
+        # CRITICAL FIX: Seeded shuffle ensures exact same sequence across all scripts and processes
         combined = list(zip(self.samples, self.labels))
-        random.shuffle(combined)
+        rng.shuffle(combined)
         if combined:
             self.samples, self.labels = zip(*combined)
         self.samples = list(self.samples)

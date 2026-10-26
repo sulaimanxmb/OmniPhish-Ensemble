@@ -259,7 +259,16 @@ def main():
     print("\n" + "="*80)
     print(f"Total Pipeline Execution Time: {int(hours)}h {int(mins)}m {secs:.2f}s")
     print("Logs saved in: ./pipeline_logs/")
-    print("="*80 + "\n")
+    print("="*80)
+    
+    # Announce the Interactive Web Dashboard on localhost:5067
+    print("\n" + "#"*80)
+    print("🌐 OMNIPHISH INTERACTIVE RESEARCH DASHBOARD IS READY (PORT 5067)")
+    print("#"*80)
+    print("Explore all finalized numbers, interactive comparative graphs, and copy IEEE tables:")
+    print("\n  👉 Open Dashboard in Browser:  http://localhost:5067")
+    print("  👉 Manual Server Launch:       python dashboard/server.py\n")
+    print("#"*80 + "\n")
 
 if __name__ == "__main__":
     main()

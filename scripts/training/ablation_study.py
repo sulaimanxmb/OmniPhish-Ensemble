@@ -1,5 +1,8 @@
 import sys, os; sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 import os
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
+import random
 import argparse
 import numpy as np
 import xgboost as xgb
@@ -14,7 +17,28 @@ from omniphish.cnn_model import CNN1DEmbedding
 from omniphish.gnn_model import GNNEmbedding
 from omniphish.transformer_model import CodeBERTEmbedding
 
+def set_seed(seed=42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        torch.mps.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
+
+set_seed(42)
+
 def extract_global_features(model_type):
+    cache_path = f"metrics/cached_features_{model_type}.npz"
+    if os.path.exists(cache_path):
+        print(f"[*] Loading cached feature embeddings from '{cache_path}'...")
+        cached = np.load(cache_path)
+        return cached['struct_feats'], cached['cb_feats'], cached['heuristics'], cached['y_true']
+        
     print(f"[*] Loading trained Neural Networks for {model_type.upper()}...")
     device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     
@@ -82,6 +106,9 @@ def extract_global_features(model_type):
     if len(heuristics.shape) == 1:
         heuristics = heuristics.reshape(-1, 1)
         
+    os.makedirs("metrics", exist_ok=True)
+    np.savez_compressed(cache_path, struct_feats=struct_feats, cb_feats=cb_feats, heuristics=heuristics, y_true=y_true)
+        
     return struct_feats, cb_feats, heuristics, y_true
 
 def run_ablation_test(test_name, X, y, test_idx):
@@ -108,11 +135,15 @@ def run_ablation_test(test_name, X, y, test_idx):
     smote = SMOTE(random_state=42)
     X_train_smote, y_train_smote = smote.fit_resample(X_train_scaled, y_train_raw)
     
-    # 3. Train the Meta-Classifier
+    # 3. Train the Meta-Classifier with feature subsampling and depth regularization
+    # This prevents the trees from overfitting on low-dimensional heuristic splits in 899-D space
     model = xgb.XGBClassifier(
         n_estimators=200,
-        max_depth=6,
+        max_depth=4,
         learning_rate=0.05,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        reg_lambda=1.5,
         tree_method='hist',
         random_state=42,
         n_jobs=-1
@@ -189,7 +220,7 @@ def main(model_type):
     
     # Test 5: Full Tri-Modal Ensemble
     X_test5 = np.hstack((X_struct, X_codebert, X_heuristics))
-    results.append(run_ablation_test("FULL ENSEMBLE (All 903 Dimensions)", X_test5, y_all, test_idx))
+    results.append(run_ablation_test(f"FULL ENSEMBLE (All {X_test5.shape[1]} Dimensions)", X_test5, y_all, test_idx))
     
     # Print Final Summary Table
     print("\n" + "="*85)
