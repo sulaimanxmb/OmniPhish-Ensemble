@@ -1,82 +1,71 @@
 # OmniPhish: A Tri-Modal Stacking Ensemble for Evasive Phishing Detection
 
+[![IEEE Xplore Paper](https://img.shields.io/badge/IEEE%20Xplore-Research%20Paper-00629B.svg)](PASTE_IEEE_XPLORE_LINK_HERE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch CUDA](https://img.shields.io/badge/PyTorch-2.11%20%7C%20CUDA%2012.8-ee4c2c.svg)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Live%20Demo-ffcc00.svg)](https://huggingface.co/spaces/XMB480/Omniphish)
 [![Kaggle Dataset](https://img.shields.io/badge/Kaggle-OmniPhish%20Dataset%20v1-20BEFF.svg)](https://www.kaggle.com/datasets/sulaimaneksambi/omniphish-dataset-v1)
 
-Official implementation of **OmniPhish**, a Deep Learning Stacking Ensemble that mitigates "Domain Blindness" in modern web security by fusing Document Object Model (DOM) structural sequence modeling, isolated client-side JavaScript semantic intent analysis, and explicit DOM behavioral heuristics.
+> 📄 **Official IEEE Publication:**
+> **[Read the Full Research Paper on IEEE Xplore](PASTE_IEEE_XPLORE_LINK_HERE)** *(Proceedings will be indexed upon publication)*  
+> *Accepted & Camera-Ready locked for IEEE Conference Proceedings.*
+
+---
+
+## 📌 Overview
+
+**OmniPhish** is a deep learning stacking ensemble engineered to detect evasive phishing attacks by eliminating domain blindness. Rather than relying on easily manipulated domain names or resource-intensive visual screenshots, OmniPhish evaluates web pages across three synchronized modalities:
+
+1. **DOM Structural Modeling:** Captures hierarchical layout features using 1D Convolutional Neural Network (CNN) or Graph Convolutional Network (GCN) representations.
+2. **JavaScript Semantic Intent:** Analyzes client-side script behavior and execution patterns using fine-tuned CodeBERT contextual embeddings.
+3. **Behavioral Heuristics:** Rapidly checks critical structural indicators such as form action targets and DOM nesting depth.
+4. **Meta-Classification:** An optimized XGBoost meta-learner integrates representations across all three modalities to produce the final classification decision.
+
+> 📖 **Looking for theoretical derivations, mathematical formulation, and ablation studies?**  
+> Please consult our **[IEEE Xplore research paper](PASTE_IEEE_XPLORE_LINK_HERE)** for detailed mathematical proofs, latent space balancing formulations, full experimental ablation tables, and baseline comparisons.
 
 ---
 
 ## 🌐 Public Resources & Artifacts
 
-- **Live Interactive Web Demo:** [Hugging Face Spaces](https://huggingface.co/spaces/XMB480/Omniphish)
+- **Official Research Paper:** [IEEE Xplore Manuscript](PASTE_IEEE_XPLORE_LINK_HERE)
+- **Interactive Live Demo:** [Hugging Face Spaces](https://huggingface.co/spaces/XMB480/Omniphish)
 - **Pre-Trained Weights:** [Hugging Face Model Hub](https://huggingface.co/XMB480/OmniPhish-Ensemble)
-- **Curated Research Dataset (7,990 DOM Samples):** [Kaggle Dataset v1](https://www.kaggle.com/datasets/sulaimaneksambi/omniphish-dataset-v1)
-- **Publication Status:** IEEE Conference Accepted (Camera-Ready locked; proceedings will be indexed via IEEE Xplore)
+- **Curated Dataset (7,990 DOM Samples):** [Kaggle Dataset v1](https://www.kaggle.com/datasets/sulaimaneksambi/omniphish-dataset-v1)
 
 ---
 
-## 📐 Architecture Overview
+## 📐 System Architecture
 
 ![OmniPhish Architecture](visualizations/Architecture.png)
 
-OmniPhish bypasses resource-heavy visual rendering and screenshot pipelines, operating directly on post-rendered DOM hierarchies and client-side execution logic:
+OmniPhish processes web pages directly from raw HTML/DOM and client-side scripts without requiring browser screenshot rendering pipelines, ensuring lightweight and robust operation even against visually disguised attacks.
 
-1. **Spatial / Relational Structural Analysis (128-D):**
-   - **1D-CNN Variant:** Multi-scale 1D Convolutional Neural Network (kernel sizes 3, 4, 5) scanning DOM tag sequences.
-   - **GNN Variant:** Graph Convolutional Network (GCN) modeling the DOM tree as a connected relational graph.
-2. **Isolated JavaScript Semantic Intent (768-D):**
-   - Pre-trained **CodeBERT** fine-tuned via Low-Rank Adaptation (LoRA, rank $r=8$, $\alpha=32$) exclusively on extracted JavaScript logic.
-   - Multi-chunk tokenization with **1D Global Max Pooling (GMP)** over classification tokens ($\mathbf{h}_{\text{CLS}}^{(c)}$) to eradicate evasion by dead-code padding.
-3. **Explicit DOM Behavioral Heuristics (3-D):**
-   - Externalized form action flags (`Heur_Suspicious_Action`), maximum DOM tree depth (`Heur_DOM_Depth`), and URL / nesting scores (`Heur_URL_Score`).
-4. **Meta-Classification & Spatial Memory Balancing:**
-   - Unified **899-dimensional** feature vector classified by an **Optuna-optimized XGBoost Meta-Classifier**.
-   - Synthetic Minority Over-sampling Technique (**SMOTE**) applied post-concatenation in the joint 899-D latent space following Standard Scaling to resolve class imbalance without data leakage.
+- **Structural Feature Extractor:** Employs multi-scale 1D-CNN or GCN message-passing layers to extract topological structure.
+- **Semantic Code Extractor:** Employs multi-chunk tokenization and global pooling over CodeBERT representations to inspect embedded JavaScript without executing malicious code.
+- **Behavioral Indicators:** Extracts explicit risk indicators (suspicious form actions, tree depth).
+- **Stacking Meta-Classifier:** Fuses latent feature vectors into an ensemble decision boundary tuned for zero-day phishing discovery.
 
 ---
 
-## 📊 Benchmark Results
+## ⚡ Performance Highlights
 
-### 1. Zero-Day Holdout Vault Performance (Table I)
-Evaluated on an isolated 10% quasi-stratified temporal zero-day split (**799 samples: 566 phishing, 233 benign**; ~2.43:1 ratio) strictly unseen during model training and hyperparameter tuning:
+Evaluated on an isolated 10% temporal zero-day holdout vault (799 unseen samples: 566 phishing, 233 benign):
 
-| Model Architecture | Accuracy | Precision | Recall | F1-Score | Missed Attacks (FN / 566) | False Alarms (FP / 233) | Peak VRAM | Inference Latency |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **OmniPhish CNN (Proposed)** | **98.37%** | **98.25%** | **99.47%** | **98.86%** | **3 (0.53% FNR)** | **10** | **1.80 GB** | **93.79 ms/URL** |
-| Long-Context Semantic (Longformer 4096) | 94.24% | 94.07% | 98.06% | 96.02% | 11 | 35 | 11.56 GB | ~2,500 ms/URL |
-| **OmniPhish GNN (Proposed)** | **93.24%** | **93.10%** | **97.70%** | **95.34%** | **13 (2.30% FNR)** | **41** | **2.96 GB** | **95.28 ms/URL** |
-| Pure Structural CNN (HTMLPhish) | 91.24% | 92.03% | 95.94% | 93.94% | 23 | 47 | 0.64 GB | ~45.00 ms/URL |
-| LLM Zero-Shot (Qwen2.5-Coder 14B) | 47.68% | 94.58% | 27.74% | 42.90% | 409 | 9 | ~9.50 GB | ~4,200 ms/URL |
+- **High Detection Rate:** Achieves up to **98.37% Accuracy** and **99.47% Recall** on zero-day attacks.
+- **Ultra-Fast Inference:** Sub-100ms per sample (~93.8 ms/URL), enabling real-time edge or browser-extension deployment.
+- **Lightweight Memory Footprint:** Operates within consumer hardware constraints (< 2 GB VRAM on NVIDIA GPUs).
 
-### 2. Architectural Ablation Study (Table II)
-Evaluates the theoretical upper-bound synergy across modalities trained on 100% of non-vault data:
-
-| Architecture Variant | Ablated Modality | F1-Score | Precision | Recall | MCC |
-| :--- | :--- | :---: | :---: | :---: | :---: |
-| **OmniPhish CNN** | No CodeBERT (CNN + Heur) | 99.21% | 99.47% | 98.95% | 0.9727 |
-| | No CNN (CodeBERT + Heur) | 96.25% | 97.82% | 94.73% | 0.8760 |
-| | No Heur (CNN + CodeBERT) | 99.21% | 99.65% | 98.77% | 0.9728 |
-| | **FULL CNN ENSEMBLE** | **99.21%** | **99.65%** | **98.77%** | **0.9728** |
-| **OmniPhish GNN** | No CodeBERT (GNN + Heur) | 88.95% | 90.96% | 87.02% | 0.6240 |
-| | No GNN (CodeBERT + Heur) | 95.91% | 96.50% | 95.33% | 0.8546 |
-| | No Heur (GNN + CodeBERT) | 95.40% | 95.65% | 95.16% | 0.8350 |
-| | **FULL GNN ENSEMBLE** | **95.40%** | **95.81%** | **94.98%** | **0.8355** |
-
-### 3. Cross-Validation Stability
-- **OmniPhish CNN 5-Fold Validation F1:** $98.86\% \pm 2.10\%$
-- **OmniPhish GNN 5-Fold Validation F1:** $95.90\% \pm 0.30\%$ (demonstrating extreme topological cross-fold stability)
+*(For complete statistical tables, ROC/PR curves, and comparative baselines including HTMLPhish, Longformer, and LLM zero-shot agents, please see the published paper.)*
 
 ---
 
-## 🛠️ Step-by-Step Replication Guide
+## 🛠️ Replication & Setup Guide
 
 ### Step 1: Environment Setup
 
-Clone the repository and install dependencies in a clean virtual environment:
+Clone the repository and set up a Python virtual environment:
 
 ```bash
 git clone https://github.com/sulaimanxmb/OmniPhish-Ensemble.git
@@ -84,8 +73,10 @@ cd OmniPhish-Ensemble
 
 # Create and activate virtual environment
 python -m venv .venv
+
 # Windows (PowerShell):
 .venv\Scripts\Activate.ps1
+
 # Linux / macOS:
 source .venv/bin/activate
 
@@ -93,7 +84,8 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-> **GPU Acceleration Note:** To enable CUDA hardware acceleration on NVIDIA GPUs, install the CUDA-enabled PyTorch build matching your driver:
+> **GPU Acceleration (Recommended for Windows / NVIDIA):**  
+> Install the CUDA-enabled PyTorch build matching your NVIDIA driver:
 > ```bash
 > pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 > ```
@@ -118,100 +110,34 @@ python -c "import os; p=len(os.listdir('dataset/raw_html/phishing')); b=len(os.l
 
 ---
 
-### Step 3: Reproduce Results
+### Step 3: Running OmniPhish
 
-You can reproduce all experiments either through the **automated master pipeline** or via **modular component execution**:
-
-#### Option A: Automated Master Pipeline (Recommended)
-
-Run the unattended master orchestration script:
+#### A. Automated Master Pipeline (Recommended)
+Run the automated orchestration script to train and evaluate CNN and GNN models end-to-end:
 ```bash
 python run_pipeline.py
 ```
-- **Select Execution Mode:** Choose `[1]` to train and evaluate both CNN and GNN ensembles, or `[4]` to skip training and evaluate existing checkpoints directly.
-- **Select Training Mode:**
-  - `[1] FAST MODE`: Pre-extracts global CodeBERT embeddings once (~15 minutes on modern GPUs).
-  - `[2] SLOW MODE`: Strict fold-by-fold CodeBERT LoRA fine-tuning with zero feature leakage (~2 hours).
-- **Select Visualizations:** Enter `A` to generate all mathematical plots (ROC, PR, SHAP, t-SNE, SMOTE PCA, Confusion Matrices).
+- Select `[1]` to run both CNN and GNN, or `[4]` to evaluate existing checkpoints directly.
+- Choose between **Fast Mode** (pre-extracted representations) or **Slow Mode** (isolated fold-by-fold fine-tuning).
 
----
+#### B. Single URL Live Inference
+Run inference directly against an online webpage:
+```bash
+python predict.py --url https://example.com
+```
 
-#### Option B: Modular Step-by-Step Execution
+#### C. Interactive Research Dashboard
+Launch the local web dashboard for interactive exploration of metrics and visualizations:
+```bash
+python dashboard/server.py
+```
+Then navigate to `http://localhost:5067` in your browser.
 
-1. **Train the 1D-CNN Stacking Ensemble:**
-   ```bash
-   python scripts/training/trainer.py
-   ```
-   Locks the 10% holdout vault into `weights/vault_files.json`, conducts 5-Fold Cross Validation with Optuna hyperparameter optimization, and saves weights to `weights/` and `weights_cnn/`.
-
-2. **Train the GNN Stacking Ensemble:**
-   ```bash
-   python scripts/training/gnn_trainer.py
-   ```
-   Executes graph convolution message passing across the DOM relational trees and saves weights to `weights_gnn/`.
-
-3. **Evaluate the Decoupled Zero-Day Holdout Vault:**
-   ```bash
-   # Evaluate CNN Model
-   python scripts/training/Check_for_overfitting.py --model cnn
-
-   # Evaluate GNN Model
-   python scripts/training/Check_for_overfitting.py --model gnn
-   ```
-   Outputs exact Accuracy, Precision, Recall, F1-Score, ROC-AUC, and Confusion Matrix metrics against the unseen zero-day vault.
-
-4. **Reproduce the Architectural Ablation Study (Table II):**
-   ```bash
-   # Run CNN Ablations (No CodeBERT, No CNN, No Heuristics, Full Ensemble)
-   python scripts/training/ablation_study.py --model cnn
-
-   # Run GNN Ablations (No CodeBERT, No GNN, No Heuristics, Full Ensemble)
-   python scripts/training/ablation_study.py --model gnn
-   ```
-
-5. **Evaluate Independent SOTA Baselines:**
-   ```bash
-   # 1. Pure Structural CNN (HTMLPhish)
-   python baselines/htmlphish_trainer.py
-
-   # 2. Long-Context Transformer (Longformer 4096)
-   python baselines/longformer_trainer.py
-
-   # 3. LLM Zero-Shot Baseline (Qwen2.5-Coder:14B)
-   # Requires Ollama running in the background: ollama run qwen2.5-coder:14b
-   python baselines/llm_zeroshot_baseline.py
-   ```
-
-6. **Generate Publication Visualizations:**
-   ```bash
-   python scripts/visualization/generate_visualizations.py --model both
-   ```
-   - Enter `0` for the Baseline Comparison bar chart (`baseline_comparison.pdf`).
-   - Enter `1` for the XGBoost Feature Importance plot (`cnn_xgboost_importance.pdf`, `gnn_xgboost_importance.pdf`).
-   - Enter `C` for Combined ROC and Precision-Recall Curves (`combined_roc_curve.pdf`, `combined_pr_curve.pdf`).
-   - Enter `A` to generate all high-resolution figures in `Visualizations/`.
-
-7. **Launch the Interactive Research Dashboard:**
-   ```bash
-   python dashboard/server.py
-   ```
-   Open your browser to [http://localhost:5067](http://localhost:5067) to view the interactive metrics comparison, ablation breakdown, and high-resolution artifact gallery.
-
-8. **Live URL Single-Sample Prediction:**
-   ```bash
-   python predict.py --url https://example.com
-   ```
-
----
-
-## 🔒 Exact Reproducibility Guarantee
-
-To eradicate stochastic variance across different operating systems and CPU thread schedulers, the following controls are strictly enforced:
-
-- **Master Seed `42`**: Applied across Python `random.seed(42)`, `numpy.random.seed(42)`, `torch.manual_seed(42)`, and Optuna `TPESampler(seed=42)`.
-- **Deterministic PyTorch Operations**: `torch.backends.cudnn.deterministic = True`, `torch.backends.cudnn.benchmark = False`, and `os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'`.
-- **Worker Seed Synchronization**: PyTorch DataLoader processes use `worker_init_fn=seed_worker` with fixed `torch.Generator()` seeds.
-- **Persistent Vault Synchronization**: The exact 799 holdout URLs are saved to `weights/vault_files.json`, ensuring every baseline and ensemble variant tests on the exact identical zero-day samples.
+#### D. Generate Publication Figures
+Generate ROC curves, Precision-Recall curves, feature importance charts, and confusion matrices:
+```bash
+python scripts/visualization/generate_visualizations.py --model both
+```
 
 ---
 
@@ -219,63 +145,49 @@ To eradicate stochastic variance across different operating systems and CPU thre
 
 ```
 OmniPhish-Ensemble/
-├── Paper.tex                             # Camera-Ready IEEE Conference Manuscript source
-├── Paper.pdf                             # Compiled publication PDF
+├── Paper.pdf                             # Camera-Ready IEEE Conference Publication
 ├── README.md                             # Documentation & replication manual
-├── requirements.txt                      # Complete Python dependency specification
+├── requirements.txt                      # Python dependencies
 ├── run_pipeline.py                       # Automated master pipeline runner
-├── predict.py                            # Standalone single-URL live inference CLI
-├── omniphish/                            # Core neural architectures & feature extractors
-│   ├── classifier.py                     # MetaClassifier (Optuna XGBoost + Logistic Regression)
-│   ├── cnn_model.py                      # Multi-scale 1D-CNN structural embedding
-│   ├── dataset_loader.py                 # HTML parser, DOM depth, and PyTorch dataset
-│   ├── gnn_model.py                      # Graph Convolutional Network (GCN) embedding
-│   ├── html_parser.py                    # Tag cleaning, text extraction, and CodeBERT sanitizer
-│   ├── transformer_model.py              # CodeBERT LoRA feature extractor with 1D GMP
-│   └── url_heuristics.py                 # Domain, form action, and nesting heuristics
+├── predict.py                            # Single-URL live inference CLI
+├── omniphish/                            # Core neural network modules & feature extractors
+│   ├── classifier.py                     # MetaClassifier (Optuna XGBoost)
+│   ├── cnn_model.py                      # 1D-CNN structural modeling
+│   ├── gnn_model.py                      # Graph Convolutional Network (GCN) modeling
+│   ├── dataset_loader.py                 # Multi-modal HTML parser & PyTorch DataLoader
+│   ├── html_parser.py                    # Tag cleaning & token sanitization
+│   ├── transformer_model.py              # CodeBERT LoRA feature extractor
+│   └── url_heuristics.py                 # DOM behavioral heuristics
 ├── scripts/
-│   ├── training/
+│   ├── training/                         # Training, ablation, and validation scripts
 │   │   ├── trainer.py                    # 1D-CNN training & Optuna cross-validation
 │   │   ├── gnn_trainer.py                # GNN training & Optuna cross-validation
-│   │   ├── Check_for_overfitting.py      # Holdout vault evaluator & confusion matrix generator
-│   │   └── ablation_study.py             # Tri-modal synergy ablation benchmark
+│   │   ├── Check_for_overfitting.py      # Holdout vault evaluator
+│   │   └── ablation_study.py             # Synergy ablation experiments
 │   └── visualization/
-│       ├── generate_visualizations.py    # Master visualization suite (SHAP, ROC, PR, PCA)
-│       └── convert_arch.py               # Diagram conversion utility
-├── baselines/                            # State-of-the-Art comparative models
-│   ├── htmlphish_trainer.py              # Pure Structural CNN (HTMLPhish baseline)
-│   ├── longformer_trainer.py             # Sparse Transformer (Longformer 4096 baseline)
-│   └── llm_zeroshot_baseline.py          # Large Language Model (Qwen2.5-Coder 14B baseline)
-├── dashboard/                            # Local interactive research web dashboard
-│   ├── server.py                         # FastAPI dashboard backend (Port 5067)
-│   └── templates/index.html              # Responsive interactive metrics interface
-├── Visualizations/                       # High-resolution PDF publication graphics
-│   ├── Architecture.pdf                  # Tri-Modal system overview (Figure 2)
-│   ├── baseline_comparison.pdf           # F1-Score vs Peak VRAM comparison (Figure 3)
-│   ├── cnn_smote_pca_comparison.pdf      # Fold-specific SMOTE PCA balancing (Figure 1)
-│   ├── combined_roc_curve.pdf            # ROC Curves for CNN & GNN (Figure 4)
-│   ├── cnn_xgboost_importance.pdf        # XGBoost Feature Importance for CNN (Figure 5)
-│   └── gnn_xgboost_importance.pdf        # XGBoost Feature Importance for GNN (Figure 6)
-└── metrics/                              # Canonical evaluation logs & predicted probabilities
-    ├── kfold_variance_logs.csv           # 5-Fold cross-validation variance logs
-    ├── y_probs_cnn.npy                   # Saved probability outputs for CNN vault
-    ├── y_probs_gnn.npy                   # Saved probability outputs for GNN vault
-    ├── y_true_cnn.npy                    # True binary labels for CNN vault
-    └── y_true_gnn.npy                    # True binary labels for GNN vault
+│       └── generate_visualizations.py    # ROC, PR, SHAP, and PCA plotting suite
+├── baselines/                            # Comparative baseline implementations
+│   ├── htmlphish_trainer.py              # Pure Structural CNN (HTMLPhish)
+│   ├── longformer_trainer.py             # Sparse Transformer (Longformer 4096)
+│   └── llm_zeroshot_baseline.py          # LLM Zero-Shot baseline (Qwen2.5-Coder)
+├── dashboard/                            # Local FastAPI research dashboard (Port 5067)
+├── visualizations/                       # Publication graphics & evaluation charts
+└── metrics/                              # Canonical evaluation logs & vault prediction outputs
 ```
 
 ---
 
 ## 📜 Citation
 
-If you find OmniPhish helpful in your security research or benchmark comparisons, please cite our manuscript:
+If you find OmniPhish useful in your academic or applied security research, please cite our IEEE conference publication:
 
 ```bibtex
 @inproceedings{omniphish2026,
   author    = {Mohammed Sulaiman Eksambi and Dushanth Purushotham D and Numan Nisar Ahmed and Sumathi D and Devi Priya V S},
   title     = {OmniPhish: A Tri-Modal Stacking Ensemble for Evasive Phishing Detection},
   booktitle = {Proceedings of the IEEE Conference},
-  year      = {2026}
+  year      = {2026},
+  url       = {PASTE_IEEE_XPLORE_LINK_HERE}
 }
 ```
 
